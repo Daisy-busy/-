@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>团队记账本</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f5f0; color: #1a1a1a; min-height: 100vh; }
+
+  .container { max-width: 800px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+
+  .hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+  .hd-title { font-size: 20px; font-weight: 600; }
+  .hd-sub { font-size: 13px; color: #888; margin-top: 3px; }
+
+  .api-bar { display: flex; gap: 8px; align-items: center; background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; padding: 10px 14px; margin-bottom: 1.25rem; }
+  .api-bar input { flex: 1; border: none; background: transparent; font-size: 13px; color: #1a1a1a; outline: none; font-family: inherit; }
+  .api-bar input::placeholder { color: #aaa; }
+  .api-bar svg { flex-shrink: 0; color: #999; }
+  .api-status { font-size: 12px; flex-shrink: 0; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot-on { background: #52c41a; }
+  .dot-off { background: #bbb; }
+
+  .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+  .metric { background: #fff; border-radius: 10px; padding: 14px; border: 1px solid #e5e5e5; }
+  .ml { font-size: 12px; color: #888; margin-bottom: 5px; }
+  .mv { font-size: 22px; font-weight: 600; }
+
+  .tabs { display: flex; border-bottom: 1px solid #e5e5e5; margin-bottom: 1.25rem; background: #fff; border-radius: 10px 10px 0 0; padding: 0 8px; }
+  .tab { padding: 12px 16px; font-size: 14px; cursor: pointer; border: none; background: none; color: #888; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; transition: color 0.15s; }
+  .tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; font-weight: 500; }
+  .tab:hover { color: #444; }
+
+  .sec { display: none; }
+  .sec.active { display: block; }
+
+  .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 10px; }
+
+  .filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-row select { font-size: 13px; padding: 6px 10px; border: 1px solid #e5e5e5; border-radius: 8px; background: #fff; font-family: inherit; color: #1a1a1a; cursor: pointer; height: 32px; }
+
+  .bill-list { display: flex; flex-direction: column; gap: 6px; }
+  .bill-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  .bill-info { flex: 1; min-width: 0; }
+  .bill-name { font-size: 14px; font-weight: 500; }
+  .bill-meta { font-size: 12px; color: #888; margin-top: 3px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+  .bill-amt { font-size: 15px; font-weight: 600; flex-shrink: 0; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 500; display: inline-block; }
+  .tag-餐饮 { background: #e6f7ee; color: #0a5c3c; }
+  .tag-交通 { background: #e6f0fb; color: #0a3c7a; }
+  .tag-办公 { background: #fdf3e3; color: #7a4e0a; }
+  .tag-住宿 { background: #fce8f0; color: #7a0a40; }
+  .tag-其他 { background: #f0f0ee; color: #555; }
+  .sdot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .sdot-已确认 { background: #52c41a; }
+  .sdot-待确认 { background: #faad14; }
+  .item-note { font-size: 11px; color: #aaa; display: block; margin-top: 2px; }
+
+  .action-btn { background: none; border: none; cursor: pointer; color: #bbb; font-size: 16px; padding: 2px 4px; line-height: 1; transition: color 0.15s; }
+  .action-btn:hover { color: #666; }
+
+  .empty { text-align: center; padding: 3rem; color: #bbb; font-size: 14px; }
+  .empty-icon { font-size: 36px; display: block; margin-bottom: 10px; }
+
+  .sum-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+  .sum-table th { text-align: left; padding: 8px 10px; font-size: 12px; color: #888; font-weight: 400; border-bottom: 1px solid #f0f0f0; }
+  .sum-table td { padding: 12px 10px; border-bottom: 1px solid #f5f5f5; }
+  .sum-table tr:last-child td { border-bottom: none; }
+  .bar-bg { height: 4px; background: #f0f0f0; border-radius: 2px; margin-top: 5px; }
+  .bar-fg { height: 100%; border-radius: 2px; background: #6c5ce7; }
+  .pav { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; vertical-align: middle; margin-right: 8px; }
+
+  .exp-pre { font-size: 12px; color: #1a1a1a; white-space: pre-wrap; font-family: 'Courier New', monospace; line-height: 1.8; }
+
+  /* Modal */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 200; padding: 1rem; }
+  .overlay.open { display: flex; }
+  .modal { background: #fff; border-radius: 16px; padding: 1.5rem; width: 500px; max-width: 100%; max-height: 92vh; overflow-y: auto; }
+  .mhd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+  .mhd h3 { font-size: 17px; font-weight: 600; }
+  .close-btn { background: none; border: none; cursor: pointer; color: #aaa; font-size: 22px; line-height: 1; padding: 0; }
+  .close-btn:hover { color: #555; }
+
+  .upload-zone { border: 1.5px dashed #d0d0d0; border-radius: 10px; padding: 1.5rem; text-align: center; cursor: pointer; background: #fafafa; margin-bottom: 14px; transition: background 0.15s, border-color 0.15s; }
+  .upload-zone:hover { background: #f0f0f0; border-color: #aaa; }
+  .upload-icon { font-size: 32px; display: block; margin-bottom: 8px; }
+  .upload-zone p { font-size: 13px; color: #888; }
+  .upload-zone p.hint-ai { color: #6c5ce7; font-weight: 500; }
+  .img-prev { max-height: 110px; border-radius: 8px; margin-top: 10px; object-fit: cover; display: none; }
+
+  .ai-box { background: #f5f3ff; border: 1px solid #d8d0ff; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; display: none; }
+  .ai-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: #ece9ff; color: #4a3b9e; padding: 2px 8px; border-radius: 99px; margin-bottom: 6px; font-weight: 500; }
+
+  .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .fg { display: flex; flex-direction: column; gap: 5px; }
+  .fg label { font-size: 12px; color: #888; }
+  .fg input, .fg select, .fg textarea { font-family: inherit; font-size: 14px; border: 1px solid #e5e5e5; border-radius: 8px; padding: 8px 10px; background: #fff; color: #1a1a1a; outline: none; transition: border-color 0.15s; }
+  .fg input:focus, .fg select:focus, .fg textarea:focus { border-color: #aaa; }
+  .fg textarea { resize: vertical; }
+
+  .actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+  .btn { padding: 9px 22px; border-radius: 9px; font-size: 14px; cursor: pointer; font-family: inherit; font-weight: 500; transition: opacity 0.15s; }
+  .btn-p { background: #1a1a1a; color: #fff; border: none; }
+  .btn-p:hover { opacity: 0.8; }
+  .btn-s { background: transparent; border: 1px solid #d0d0d0; color: #1a1a1a; }
+  .btn-s:hover { background: #f5f5f5; }
+  .btn-outline { background: transparent; border: 1px solid #d0d0d0; color: #1a1a1a; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-outline:hover { background: #f5f5f5; }
+
+  .pulse { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+
+  @media (max-width: 600px) {
+    .metric-grid { grid-template-columns: repeat(2, 1fr); }
+    .frow { grid-template-columns: 1fr; }
+    .tab { padding: 10px 10px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="hd">
+    <div>
+      <div class="hd-title">📋 团队记账本</div>
+      <div class="hd-sub">上传收据 · AI自动识别 · 月度汇总导出</div>
+    </div>
+    <button class="btn btn-p" onclick="openAdd()">＋ 添加账单</button>
+  </div>
+
+  <div class="api-bar">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+    <input type="password" id="api-key-input" placeholder="粘贴 Anthropic API Key（sk-ant-...），上传图片后自动识别" oninput="saveKey(this.value)">
+    <span class="api-status" id="api-status"><span class="dot dot-off"></span> 未配置</span>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric"><div class="ml">本月支出</div><div class="mv" id="m-total">¥0</div></div>
+    <div class="metric"><div class="ml">账单笔数</div><div class="mv" id="m-count">0</div></div>
+    <div class="metric"><div class="ml">涉及人数</div><div class="mv" id="m-people">0</div></div>
+    <div class="metric"><div class="ml">待确认</div><div class="mv" id="m-pending">0</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('bills',this)">📄 账单明细</button>
+    <button class="tab" onclick="switchTab('summary',this)">📊 人员汇总</button>
+    <button class="tab" onclick="switchTab('export',this)">⬇️ 导出报表</button>
+  </div>
+
+  <div id="tab-bills" class="sec active">
+    <div class="filter-row">
+      <select id="fp" onchange="renderBills()"><option value="">全部人员</option></select>
+      <select id="fc" onchange="renderBills()">
+        <option value="">全部类型</option>
+        <option>餐饮</option><option>交通</option><option>办公</option><option>住宿</option><option>其他</option>
+      </select>
+      <select id="fs" onchange="renderBills()">
+        <option value="">全部状态</option><option>已确认</option><option>待确认</option>
+      </select>
+    </div>
+    <div id="bill-list" class="bill-list"></div>
+  </div>
+
+  <div id="tab-summary" class="sec">
+    <div class="card">
+      <table class="sum-table">
+        <thead><tr><th>人员</th><th>笔数</th><th>金额</th><th style="width:160px">占比</th></tr></thead>
+        <tbody id="sum-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-export" class="sec">
+    <div class="card" style="margin-bottom:10px;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:14px;">导出设置</div>
+      <div class="frow">
+        <div class="fg"><label>月份</label><input type="month" id="exp-month" oninput="renderExport()"></div>
+        <div class="fg"><label>筛选人员</label><select id="exp-person" onchange="renderExport()"><option value="">全部</option></select></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        <button class="btn btn-p" onclick="exportCSV()" style="display:flex;align-items:center;gap:6px;">📥 导出 CSV</button>
+        <button class="btn btn-outline btn-s" onclick="copyText()" style="display:flex;align-items:center;gap:6px;">📋 复制汇总文本</button>
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:12px;color:#888;margin-bottom:10px;">预览</div>
+      <pre class="exp-pre" id="exp-pre">-</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="overlay" id="modal">
+  <div class="modal">
+    <div class="mhd">
+      <h3 id="modal-title">添加账单</h3>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+
+    <div class="upload-zone" onclick="document.getElementById('file-inp').click()">
+      <span class="upload-icon">📷</span>
+      <p id="upload-hint" class="hint-ai">点击上传收据图片，AI 自动识别内容</p>
+      <p style="font-size:12px;margin-top:4px;">支持 JPG、PNG、HEIC</p>
+      <img id="img-prev" class="img-prev">
+    </div>
+    <input type="file" id="file-inp" accept="image/*" style="display:none" onchange="handleFile(this)">
+
+    <div class="ai-box" id="ai-box">
+      <div class="ai-badge">✨ AI识别结果</div>
+      <div id="ai-text"></div>
+    </div>
+
+    <div class="frow">
+      <div class="fg"><label>商家 / 描述 *</label><input type="text" id="f-merchant" placeholder="例：麦当劳"></div>
+      <div class="fg"><label>金额 (¥) *</label><input type="number" id="f-amount" placeholder="0.00" step="0.01" min="0"></div>
+    </div>
+    <div class="frow">
+      <div class="fg">
+        <label>消费人 *</label>
+        <select id="f-person">
+          <option value="">请选择</option>
+          <option>张伟</option><option>李娜</option><option>王芳</option><option>刘洋</option>
+          <option>陈静</option><option>赵磊</option><option>孙敏</option><option>周强</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>类型</label>
+        <select id="f-cat"><option>餐饮</option><option>交通</option><option>办公</option><option>住宿</option><option>其他</option></select>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label>日期</label><input type="date" id="f-date"></div>
+      <div class="fg"><label>状态</label><select id="f-status"><option>已确认</option><option>待确认</option></select></div>
+    </div>
+    <div class="fg" style="margin-bottom:0;">
+      <label>备注 / 明细</label>
+      <textarea id="f-note" rows="2" placeholder="可选：填写消费明细说明"></textarea>
+    </div>
+    <div class="actions">
+      <button class="btn btn-s" onclick="closeModal()">取消</button>
+      <button class="btn btn-p" id="save-btn" onclick="saveBill()">保存账单</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PEOPLE = ['张伟','李娜','王芳','刘洋','陈静','赵磊','孙敏','周强'];
+const COLORS = [
+  ['#ede9fe','#4c1d95'],['#d1fae5','#064e3b'],['#dbeafe','#1e3a8a'],
+  ['#fef3c7','#78350f'],['#fce7f3','#831843'],['#dcfce7','#14532d'],
+  ['#ffedd5','#7c2d12'],['#f1f5f9','#334155']
+];
+
+let bills = [], editId = null, apiKey = '';
+
+function gc(name) { const i = PEOPLE.indexOf(name) % COLORS.length; return COLORS[i >= 0 ? i : 0]; }
+function ini(n) { return n ? n.slice(0, 2) : '?'; }
+
+function load() {
+  try {
+    const k = localStorage.getItem('team_api_key');
+    if (k) { apiKey = k; document.getElementById('api-key-input').value = k; updateKeyStatus(); }
+    const d = localStorage.getItem('team_bills_v1');
+    if (d) bills = JSON.parse(d);
+  } catch(e) { bills = []; }
+  render();
+}
+
+function saveData() {
+  try { localStorage.setItem('team_bills_v1', JSON.stringify(bills)); } catch(e) {}
+}
+
+function saveKey(val) {
+  apiKey = val.trim();
+  try { localStorage.setItem('team_api_key', apiKey); } catch(e) {}
+  updateKeyStatus();
+}
+
+function updateKeyStatus() {
+  const el = document.getElementById('api-status');
+  if (apiKey.startsWith('sk-ant-')) {
+    el.innerHTML = '<span class="dot dot-on"></span> 已配置';
+  } else {
+    el.innerHTML = '<span class="dot dot-off"></span> 未配置';
+  }
+}
+
+function render() { renderMetrics(); renderBills(); renderSummary(); renderExport(); syncSelects(); }
+
+function renderMetrics() {
+  const tot = bills.reduce((s,b) => s + parseFloat(b.amount||0), 0);
+  const ppl = new Set(bills.map(b => b.person).filter(Boolean)).size;
+  const pend = bills.filter(b => b.status === '待确认').length;
+  document.getElementById('m-total').textContent = '¥' + tot.toFixed(0);
+  document.getElementById('m-count').textContent = bills.length;
+  document.getElementById('m-people').textContent = ppl;
+  document.getElementById('m-pending').textContent = pend;
+}
+
+function renderBills() {
+  const fp = document.getElementById('fp').value;
+  const fc = document.getElementById('fc').value;
+  const fs = document.getElementById('fs').value;
+  const list = [...bills].reverse().filter(b =>
+    (!fp || b.person === fp) && (!fc || b.category === fc) && (!fs || b.status === fs)
+  );
+  const el = document.getElementById('bill-list');
+  if (!list.length) {
+    el.innerHTML = '<div class="empty"><span class="empty-icon">📭</span>暂无账单，点击右上角添加</div>';
+    return;
+  }
+  el.innerHTML = list.map(b => {
+    const [bg, tc] = gc(b.person);
+    return `<div class="bill-item">
+      <div class="avatar" style="background:${bg};color:${tc};">${ini(b.person)}</div>
+      <div class="bill-info">
+        <div class="bill-name">${b.merchant || '未知商家'}</div>
+        <div class="bill-meta">
+          <span class="sdot sdot-${b.status}"></span>
+          <span>${b.person || '未分配'}</span>
+          <span>·</span><span>${b.date || ''}</span>
+          <span>·</span><span class="tag tag-${b.category}">${b.category}</span>
+        </div>
+        ${b.note ? `<span class="item-note">${b.note}</span>` : ''}
+      </div>
+      <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <div class="bill-amt">¥${parseFloat(b.amount||0).toFixed(2)}</div>
+        <div style="display:flex;gap:4px;">
+          <button class="action-btn" onclick="editBill('${b.id}')" title="编辑">✏️</button>
+          <button class="action-btn" onclick="delBill('${b.id}')" title="删除">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSummary() {
+  const tot = bills.reduce((s,b) => s + parseFloat(b.amount||0), 0);
+  const map = {};
+  bills.forEach(b => {
+    if (!b.person) return;
+    if (!map[b.person]) map[b.person] = { count: 0, amount: 0 };
+    map[b.person].count++;
+    map[b.person].amount += parseFloat(b.amount||0);
+  });
+  const rows = Object.entries(map).sort((a,b) => b[1].amount - a[1].amount);
+  const tb = document.getElementById('sum-body');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="4" class="empty" style="padding:2rem;">暂无数据</td></tr>'; return; }
+  tb.innerHTML = rows.map(([name, d]) => {
+    const [bg, tc] = gc(name);
+    const pct = tot > 0 ? (d.amount / tot * 100) : 0;
+    return `<tr>
+      <td><span class="pav" style="background:${bg};color:${tc};">${ini(name)}</span>${name}</td>
+      <td>${d.count}</td>
+      <td style="font-weight:600;">¥${d.amount.toFixed(2)}</td>
+      <td>
+        <div style="font-size:12px;color:#888;">${pct.toFixed(1)}%</div>
+        <div class="bar-bg"><div class="bar-fg" style="width:${pct}%;"></div></div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderExport() {
+  const month = document.getElementById('exp-month').value;
+  const person = document.getElementById('exp-person').value;
+  const list = bills.filter(b =>
+    (!month || (b.date && b.date.startsWith(month))) && (!person || b.person === person)
+  );
+  if (!list.length) { document.getElementById('exp-pre').textContent = '暂无数据'; return; }
+  const tot = list.reduce((s,b) => s + parseFloat(b.amount||0), 0);
+  const map = {};
+  list.forEach(b => { if (!map[b.person]) map[b.person] = 0; map[b.person] += parseFloat(b.amount||0); });
+  let t = `【团队费用汇总报表】${month || '全部月份'}\n`;
+  t += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  list.forEach(b => {
+    t += `${b.date}  ${(b.person||'').padEnd(4)}  ${(b.merchant||'').substring(0,14).padEnd(14)}  ¥${parseFloat(b.amount).toFixed(2).padStart(9)}  [${b.category}]\n`;
+  });
+  t += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n人员汇总：\n`;
+  Object.entries(map).sort((a,b) => b[1]-a[1]).forEach(([p,a]) => { t += `  ${p}：¥${a.toFixed(2)}\n`; });
+  t += `合　计：¥${tot.toFixed(2)}`;
+  document.getElementById('exp-pre').textContent = t;
+}
+
+function syncSelects() {
+  const ppl = [...new Set(bills.map(b => b.person).filter(Boolean))];
+  ['fp','exp-person'].forEach(id => {
+    const sel = document.getElementById(id);
+    const v = sel.value;
+    sel.innerHTML = sel.options[0].outerHTML + ppl.map(p => `<option${p===v?' selected':''}>${p}</option>`).join('');
+  });
+}
+
+function switchTab(t, el) {
+  document.querySelectorAll('.tab').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.sec').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + t).classList.add('active');
+  if (t === 'export') renderExport();
+}
+
+function openAdd() {
+  editId = null;
+  document.getElementById('modal-title').textContent = '添加账单';
+  document.getElementById('save-btn').textContent = '保存账单';
+  ['f-merchant','f-amount','f-note'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-person').value = '';
+  document.getElementById('f-cat').value = '餐饮';
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f-status').value = '已确认';
+  document.getElementById('img-prev').style.display = 'none';
+  document.getElementById('file-inp').value = '';
+  document.getElementById('ai-box').style.display = 'none';
+  const hint = document.getElementById('upload-hint');
+  hint.textContent = apiKey.startsWith('sk-ant-') ? '点击上传收据图片，AI 自动识别内容' : '点击上传收据图片（配置 API Key 后可 AI 识别）';
+  hint.className = apiKey.startsWith('sk-ant-') ? 'hint-ai' : '';
+  document.getElementById('modal').classList.add('open');
+}
+
+function editBill(id) {
+  const b = bills.find(x => x.id === id); if (!b) return;
+  editId = id;
+  document.getElementById('modal-title').textContent = '编辑账单';
+  document.getElementById('save-btn').textContent = '保存修改';
+  document.getElementById('f-merchant').value = b.merchant || '';
+  document.getElementById('f-amount').value = b.amount || '';
+  document.getElementById('f-person').value = b.person || '';
+  document.getElementById('f-cat').value = b.category || '餐饮';
+  document.getElementById('f-date').value = b.date || '';
+  document.getElementById('f-status').value = b.status || '已确认';
+  document.getElementById('f-note').value = b.note || '';
+  document.getElementById('img-prev').style.display = 'none';
+  document.getElementById('ai-box').style.display = 'none';
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+function handleFile(inp) {
+  const file = inp.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById('img-prev');
+    prev.src = e.target.result;
+    prev.style.display = 'block';
+    if (apiKey.startsWith('sk-ant-')) recognizeWithAI(e.target.result, file.type);
+  };
+  reader.readAsDataURL(file);
+}
+
+async function recognizeWithAI(dataUrl, type) {
+  const box = document.getElementById('ai-box');
+  const txt = document.getElementById('ai-text');
+  box.style.display = 'block';
+  txt.innerHTML = '<span class="pulse">✨ AI识别中，请稍候...</span>';
+  try {
+    const base64 = dataUrl.split(',')[1];
+    const mediaType = type.startsWith('image/') ? type : 'image/jpeg';
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: '请识别这张收据/账单图片，只返回JSON，格式：{"merchant":"商家名称","amount":"纯数字金额不含符号","date":"YYYY-MM-DD","category":"餐饮/交通/办公/住宿/其他","note":"明细或备注简短描述"}。识别不到的字段填空字符串。' }
+          ]
+        }]
+      })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+    const raw = data.content?.[0]?.text || '{}';
+    let parsed;
+    try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); } catch(e) { parsed = {}; }
+    if (parsed.merchant || parsed.amount) {
+      if (parsed.merchant) document.getElementById('f-merchant').value = parsed.merchant;
+      if (parsed.amount) document.getElementById('f-amount').value = parsed.amount;
+      if (parsed.date) document.getElementById('f-date').value = parsed.date;
+      if (parsed.category) document.getElementById('f-cat').value = parsed.category;
+      if (parsed.note) document.getElementById('f-note').value = parsed.note;
+      txt.innerHTML = `✅ 已自动填写：<b>${parsed.merchant||'-'}</b> · ¥${parsed.amount||'-'} · ${parsed.category||'-'}${parsed.note ? '<br><span style="color:#888;font-size:12px;">明细：'+parsed.note+'</span>' : ''}`;
+    } else {
+      txt.innerHTML = '⚠️ 未能识别，请手动填写';
+    }
+  } catch(e) {
+    txt.innerHTML = '❌ 识别失败：' + (e.message || '请检查 API Key 是否正确');
+  }
+}
+
+function saveBill() {
+  const merchant = document.getElementById('f-merchant').value.trim();
+  const amount = document.getElementById('f-amount').value;
+  const person = document.getElementById('f-person').value;
+  if (!merchant || !amount || !person) { alert('请填写商家、金额和消费人'); return; }
+  const bill = {
+    id: editId || Date.now().toString(),
+    merchant, amount: parseFloat(amount), person,
+    category: document.getElementById('f-cat').value,
+    date: document.getElementById('f-date').value,
+    status: document.getElementById('f-status').value,
+    note: document.getElementById('f-note').value.trim()
+  };
+  if (editId) { const i = bills.findIndex(b => b.id === editId); if (i >= 0) bills[i] = bill; }
+  else { bills.push(bill); }
+  saveData(); render(); closeModal();
+}
+
+function delBill(id) {
+  if (!confirm('确认删除这条账单？')) return;
+  bills = bills.filter(b => b.id !== id);
+  saveData(); render();
+}
+
+function exportCSV() {
+  const month = document.getElementById('exp-month').value;
+  const person = document.getElementById('exp-person').value;
+  const list = bills.filter(b =>
+    (!month || (b.date && b.date.startsWith(month))) && (!person || b.person === person)
+  );
+  const rows = ['日期,消费人,商家,金额,类型,状态,备注',
+    ...list.map(b => `${b.date},${b.person},${b.merchant},${b.amount},${b.category},${b.status},"${b.note||''}"`)
+  ].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\uFEFF' + rows], { type: 'text/csv;charset=utf-8;' }));
+  a.download = `费用报表_${month || '全部'}.csv`;
+  a.click();
+}
+
+function copyText() {
+  const t = document.getElementById('exp-pre').textContent;
+  navigator.clipboard.writeText(t).then(() => alert('✅ 已复制，可直接发给财务'));
+}
+
+document.getElementById('exp-month').value = new Date().toISOString().slice(0, 7);
+load();
+</script>
+</body>
+</html>
