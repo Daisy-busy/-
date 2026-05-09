@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>官邸每月流水账</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;background:#f5f5f0;color:#1a1a1a;min-height:100vh;}
+.container{max-width:860px;margin:0 auto;padding:1.5rem 1rem 4rem;}
+
+/* Login */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f5f0;}
+.login-box{background:#fff;border-radius:16px;padding:2.5rem 2rem;width:360px;max-width:95vw;border:1px solid #e5e5e5;}
+.login-title{font-size:22px;font-weight:700;text-align:center;margin-bottom:4px;}
+.login-sub{font-size:13px;color:#888;text-align:center;margin-bottom:2rem;}
+.login-err{background:#fff2f0;border:1px solid #ffccc7;border-radius:8px;padding:8px 12px;font-size:13px;color:#cf1322;margin-bottom:12px;display:none;}
+
+/* Header */
+.hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;}
+.hd-title{font-size:20px;font-weight:700;}
+.hd-sub{font-size:12px;color:#888;margin-top:2px;}
+.hd-right{display:flex;align-items:center;gap:10px;}
+.user-badge{font-size:13px;color:#555;display:flex;align-items:center;gap:6px;}
+.admin-tag{font-size:11px;background:#fff7e6;color:#d46b08;border:1px solid #ffd591;border-radius:99px;padding:1px 8px;font-weight:500;}
+.hd-btns{display:flex;gap:8px;}
+
+/* API bar */
+.api-bar{display:flex;gap:8px;align-items:center;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:10px 14px;margin-bottom:1.25rem;}
+.api-bar input{flex:1;border:none;background:transparent;font-size:13px;color:#1a1a1a;outline:none;font-family:inherit;}
+.api-bar input::placeholder{color:#aaa;}
+.api-status{font-size:12px;flex-shrink:0;display:flex;align-items:center;gap:5px;white-space:nowrap;}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
+.dot-on{background:#52c41a;}.dot-off{background:#bbb;}
+
+/* Metrics */
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.25rem;}
+.metric{background:#fff;border-radius:10px;padding:14px;border:1px solid #e5e5e5;}
+.metric.income-metric{border-color:#b7eb8f;background:#f6ffed;}
+.metric.balance-metric{border-color:#91d5ff;background:#e6f7ff;}
+.ml{font-size:12px;color:#888;margin-bottom:5px;}
+.mv{font-size:22px;font-weight:600;}
+.mv-income{color:#389e0d;}.mv-balance{color:#096dd9;}
+
+/* Tabs */
+.tabs{display:flex;border-bottom:1px solid #e5e5e5;margin-bottom:1.25rem;background:#fff;border-radius:10px 10px 0 0;padding:0 8px;overflow-x:auto;}
+.tab{padding:12px 14px;font-size:14px;cursor:pointer;border:none;background:none;color:#888;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit;white-space:nowrap;}
+.tab.active{color:#1a1a1a;border-bottom-color:#1a1a1a;font-weight:500;}
+.sec{display:none;}.sec.active{display:block;}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:1rem 1.25rem;margin-bottom:10px;}
+
+/* Filter */
+.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.filter-row select{font-size:13px;padding:6px 10px;border:1px solid #e5e5e5;border-radius:8px;background:#fff;font-family:inherit;color:#1a1a1a;cursor:pointer;height:32px;}
+
+/* Bill list */
+.bill-list{display:flex;flex-direction:column;gap:6px;}
+.bill-item{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#fff;border:1px solid #e5e5e5;border-radius:10px;}
+.bill-item.income-item{border-left:3px solid #52c41a;}
+.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;margin-top:2px;}
+.bill-info{flex:1;min-width:0;}
+.bill-name{font-size:14px;font-weight:500;}
+.bill-meta{font-size:12px;color:#888;margin-top:3px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;}
+.bill-right{text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
+.bill-amt{font-size:15px;font-weight:600;}
+.bill-amt-aed{font-size:12px;color:#389e0d;font-weight:500;}
+.amt-income{color:#389e0d;}
+.tag{font-size:11px;padding:2px 8px;border-radius:99px;font-weight:500;display:inline-block;}
+.tag-买菜{background:#e6f7ee;color:#0a5c3c;}.tag-官邸日常用品{background:#e6f0fb;color:#0a3c7a;}
+.tag-亚马逊采购{background:#fdf3e3;color:#7a4e0a;}.tag-家乐福采购{background:#fce8f0;color:#7a0a40;}
+.tag-国内采购{background:#f0f0ee;color:#555;}.tag-汽车加油{background:#fff0e6;color:#7a3a0a;}
+.tag-汽车维修保养{background:#f5e6ff;color:#5a0a7a;}.tag-停车费{background:#e6f5ff;color:#0a4a7a;}
+.tag-固定开销{background:#fff2e8;color:#873800;}.tag-手续费{background:#f9f0ff;color:#531dab;}
+.tag-收入{background:#f6ffed;color:#237804;}
+.sdot{width:6px;height:6px;border-radius:50%;display:inline-block;}
+.sdot-已确认{background:#52c41a;}.sdot-待确认{background:#faad14;}
+.item-note{font-size:11px;color:#aaa;display:block;margin-top:2px;}
+.action-btn{background:none;border:none;cursor:pointer;color:#bbb;font-size:16px;padding:2px 4px;line-height:1;}
+.action-btn:hover{color:#666;}
+.empty{text-align:center;padding:3rem;color:#bbb;font-size:14px;}
+.empty-icon{font-size:36px;display:block;margin-bottom:10px;}
+
+/* Summary */
+.sum-table{width:100%;font-size:13px;border-collapse:collapse;}
+.sum-table th{text-align:left;padding:8px 10px;font-size:12px;color:#888;font-weight:400;border-bottom:1px solid #f0f0f0;}
+.sum-table td{padding:12px 10px;border-bottom:1px solid #f5f5f5;}
+.sum-table tr:last-child td{border-bottom:none;}
+.bar-bg{height:4px;background:#f0f0f0;border-radius:2px;margin-top:5px;}
+.bar-fg{height:100%;border-radius:2px;background:#6c5ce7;}
+.pav{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;vertical-align:middle;margin-right:8px;}
+.section-label{font-size:12px;font-weight:600;color:#888;letter-spacing:0.05em;margin-bottom:10px;margin-top:4px;}
+.exp-pre{font-size:12px;color:#1a1a1a;white-space:pre-wrap;font-family:'Courier New',monospace;line-height:1.8;}
+
+/* Admin panel */
+.perm-table{width:100%;font-size:13px;border-collapse:collapse;}
+.perm-table th{text-align:left;padding:8px 10px;font-size:12px;color:#888;font-weight:400;border-bottom:1px solid #f0f0f0;}
+.perm-table td{padding:10px 10px;border-bottom:1px solid #f5f5f5;vertical-align:middle;}
+.perm-table tr:last-child td{border-bottom:none;}
+.toggle{position:relative;display:inline-block;width:40px;height:22px;}
+.toggle input{opacity:0;width:0;height:0;}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:22px;transition:.3s;}
+.slider:before{position:absolute;content:"";height:16px;width:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;}
+input:checked+.slider{background:#52c41a;}
+input:checked+.slider:before{transform:translateX(18px);}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:200;padding:1rem;}
+.overlay.open{display:flex;}
+.modal{background:#fff;border-radius:16px;padding:1.5rem;width:520px;max-width:100%;max-height:92vh;overflow-y:auto;}
+.mhd{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;}
+.mhd h3{font-size:17px;font-weight:600;}
+.close-btn{background:none;border:none;cursor:pointer;color:#aaa;font-size:22px;line-height:1;padding:0;}
+
+/* Photo */
+.photo-upload-area{border:1.5px dashed #d0d0d0;border-radius:10px;padding:1rem;background:#fafafa;margin-bottom:14px;}
+.photo-grid{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
+.photo-thumb{position:relative;width:78px;height:78px;border-radius:8px;overflow:hidden;border:1px solid #e5e5e5;flex-shrink:0;}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;cursor:pointer;}
+.photo-thumb .del-photo{position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.55);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.photo-add-btn{width:78px;height:78px;border:1.5px dashed #ccc;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:#fff;font-size:11px;color:#aaa;gap:3px;flex-shrink:0;}
+.photo-add-btn:hover{border-color:#888;color:#666;}
+.photo-count{font-size:12px;color:#aaa;}
+.bill-photos{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;}
+.bill-photo-thumb{width:42px;height:42px;border-radius:5px;object-fit:cover;border:1px solid #e5e5e5;cursor:pointer;}
+
+.ai-box{background:#f5f3ff;border:1px solid #d8d0ff;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:none;}
+.ai-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:#ece9ff;color:#4a3b9e;padding:2px 8px;border-radius:99px;margin-bottom:6px;font-weight:500;}
+.income-hint{background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:#389e0d;}
+.conv-box{background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:8px 12px;margin-top:6px;font-size:13px;color:#d46b08;display:none;}
+
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+.frow-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fg label{font-size:12px;color:#888;}
+.fg input,.fg select,.fg textarea{font-family:inherit;font-size:14px;border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px;background:#fff;color:#1a1a1a;outline:none;transition:border-color 0.15s;}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:#aaa;}
+.fg textarea{resize:vertical;}
+.amt-row{display:flex;gap:6px;}
+.amt-row select{width:110px;flex-shrink:0;}
+.amt-row input{flex:1;}
+.actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;}
+.btn{padding:9px 20px;border-radius:9px;font-size:14px;cursor:pointer;font-family:inherit;font-weight:500;transition:opacity 0.15s;}
+.btn-p{background:#1a1a1a;color:#fff;border:none;}.btn-p:hover{opacity:0.8;}
+.btn-s{background:transparent;border:1px solid #d0d0d0;color:#1a1a1a;}.btn-s:hover{background:#f5f5f5;}
+.btn-green{background:#389e0d;color:#fff;border:none;}.btn-green:hover{opacity:0.85;}
+.btn-red{background:#cf1322;color:#fff;border:none;}.btn-red:hover{opacity:0.85;}
+.btn-sm{padding:5px 12px;font-size:12px;}
+
+.pulse{animation:pulse 1.2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,0.88);display:none;align-items:center;justify-content:center;z-index:300;}
+.lightbox.open{display:flex;}
+.lightbox img{max-width:92vw;max-height:88vh;border-radius:8px;object-fit:contain;}
+.lightbox-close{position:absolute;top:18px;right:22px;background:none;border:none;color:#fff;font-size:30px;cursor:pointer;}
+.loading{text-align:center;padding:3rem;color:#aaa;font-size:14px;}
+@media(max-width:600px){
+  .metric-grid{grid-template-columns:repeat(2,1fr);}
+  .frow,.frow-3{grid-template-columns:1fr;}
+  .tab{padding:10px 10px;font-size:13px;}
+}
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div class="login-wrap" id="login-screen">
+  <div class="login-box">
+    <div class="login-title">🏛️ 官邸每月流水账</div>
+    <div class="login-sub">请登录后使用</div>
+    <div class="login-err" id="login-err">用户名或密码错误</div>
+    <div class="fg" style="margin-bottom:12px;">
+      <label>姓名</label>
+      <select id="login-name">
+        <option value="">请选择</option>
+        <option>徐慧</option><option>刘承林</option><option>保姆</option><option>司机</option><option>杨文辉</option>
+      </select>
+    </div>
+    <div class="fg" style="margin-bottom:20px;">
+      <label>密码</label>
+      <input type="password" id="login-pass" placeholder="请输入密码" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-p" style="width:100%;" onclick="doLogin()">登录</button>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="main-app" style="display:none;">
+<div class="container">
+  <div class="hd">
+    <div>
+      <div class="hd-title">🏛️ 官邸每月流水账</div>
+      <div class="hd-sub">支出 · 收入 · AI识别 · 实时同步（以AED结算）</div>
+    </div>
+    <div class="hd-right">
+      <div class="user-badge">
+        <span id="user-display"></span>
+        <span class="admin-tag" id="admin-tag" style="display:none;">管理员</span>
+        <button class="btn btn-s btn-sm" onclick="doLogout()">退出</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="api-bar">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+    <input type="password" id="api-key-input" placeholder="粘贴 Anthropic API Key（sk-ant-...），上传图片后自动AI识别" oninput="saveKey(this.value)">
+    <span class="api-status" id="api-status"><span class="dot dot-off"></span> 未配置</span>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric"><div class="ml">本月支出（AED）</div><div class="mv" id="m-total">0</div></div>
+    <div class="metric income-metric"><div class="ml">本月收入（AED）</div><div class="mv mv-income" id="m-income">0</div></div>
+    <div class="metric balance-metric"><div class="ml">本月结余（AED）</div><div class="mv mv-balance" id="m-balance">0</div></div>
+    <div class="metric"><div class="ml">账单总数</div><div class="mv" id="m-count">0</div></div>
+  </div>
+
+  <div class="tabs" id="main-tabs">
+    <button class="tab active" onclick="switchTab('bills',this)">📄 全部账单</button>
+    <button class="tab" onclick="switchTab('expense',this)">💸 支出明细</button>
+    <button class="tab" onclick="switchTab('income-tab',this)">💰 收入明细</button>
+    <button class="tab" onclick="switchTab('summary',this)">📊 汇总分析</button>
+    <button class="tab" onclick="switchTab('export',this)">⬇️ 导出报表</button>
+    <button class="tab" id="admin-tab" style="display:none;" onclick="switchTab('admin',this)">⚙️ 权限管理</button>
+  </div>
+
+  <div id="tab-bills" class="sec active">
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
+      <button class="btn btn-green" onclick="openIncome()">＋ 收入</button>
+      <button class="btn btn-p" onclick="openAdd()">＋ 支出</button>
+    </div>
+    <div class="filter-row">
+      <select id="fp" onchange="renderAll()"><option value="">全部人员</option></select>
+      <select id="ftype" onchange="renderAll()"><option value="">收支全部</option><option value="expense">支出</option><option value="income">收入</option></select>
+    </div>
+    <div id="all-list" class="bill-list"><div class="loading">加载中...</div></div>
+  </div>
+
+  <div id="tab-expense" class="sec">
+    <div class="filter-row">
+      <select id="fp2" onchange="renderExpense()"><option value="">全部人员</option></select>
+      <select id="fc2" onchange="renderExpense()">
+        <option value="">全部类型</option>
+        <option>买菜</option><option>官邸日常用品</option><option>亚马逊采购</option>
+        <option>家乐福采购</option><option>国内采购</option><option>汽车加油</option>
+        <option>汽车维修保养</option><option>停车费</option><option>固定开销</option><option>手续费</option>
+      </select>
+      <select id="fpay2" onchange="renderExpense()"><option value="">全部支付</option><option>WIO</option><option>FAB</option><option>NBD</option><option>现金</option></select>
+      <select id="fs2" onchange="renderExpense()"><option value="">全部状态</option><option>已确认</option><option>待确认</option></select>
+    </div>
+    <div id="expense-list" class="bill-list"><div class="loading">加载中...</div></div>
+  </div>
+
+  <div id="tab-income-tab" class="sec">
+    <div class="filter-row">
+      <select id="fi-payer" onchange="renderIncome()"><option value="">全部打款人</option></select>
+      <select id="fi-payee" onchange="renderIncome()"><option value="">全部收款人</option></select>
+    </div>
+    <div id="income-list" class="bill-list"><div class="loading">加载中...</div></div>
+  </div>
+
+  <div id="tab-summary" class="sec">
+    <div class="filter-row">
+      <select id="sum-month" onchange="renderSummary()"><option value="">全部月份</option></select>
+      <select id="sum-cat" onchange="renderSummary()">
+        <option value="">全部类型</option>
+        <option>买菜</option><option>官邸日常用品</option><option>亚马逊采购</option>
+        <option>家乐福采购</option><option>国内采购</option><option>汽车加油</option>
+        <option>汽车维修保养</option><option>停车费</option><option>固定开销</option><option>手续费</option>
+      </select>
+    </div>
+    <div class="section-label">按人员汇总（AED）</div>
+    <div class="card" style="margin-bottom:12px;">
+      <table class="sum-table"><thead><tr><th>人员</th><th>笔数</th><th>AED金额</th><th style="width:140px">占比</th></tr></thead>
+      <tbody id="sum-body"></tbody></table>
+    </div>
+    <div class="section-label">按类型汇总（AED）</div>
+    <div class="card" style="margin-bottom:12px;">
+      <table class="sum-table"><thead><tr><th>类型</th><th>笔数</th><th>AED金额</th><th style="width:140px">占比</th></tr></thead>
+      <tbody id="sum-cat-body"></tbody></table>
+    </div>
+    <div class="section-label">收入汇总（AED）</div>
+    <div class="card">
+      <table class="sum-table"><thead><tr><th>收款人</th><th>笔数</th><th>AED金额</th><th style="width:140px">占比</th></tr></thead>
+      <tbody id="income-sum-body"></tbody></table>
+    </div>
+  </div>
+
+  <div id="tab-export" class="sec">
+    <div class="card" style="margin-bottom:10px;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:14px;">导出设置</div>
+      <div class="frow">
+        <div class="fg"><label>月份</label><input type="month" id="exp-month" oninput="renderExport()"></div>
+        <div class="fg"><label>类型</label><select id="exp-type" onchange="renderExport()"><option value="">全部</option><option value="expense">仅支出</option><option value="income">仅收入</option></select></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        <button class="btn btn-p" onclick="exportCSV()">📥 导出 CSV</button>
+        <button class="btn btn-s" onclick="copyText()">📋 复制文本</button>
+      </div>
+    </div>
+    <div class="card"><div style="font-size:12px;color:#888;margin-bottom:10px;">预览</div><pre class="exp-pre" id="exp-pre">-</pre></div>
+  </div>
+
+  <div id="tab-admin" class="sec">
+    <div class="card" style="margin-bottom:12px;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px;">权限管理</div>
+      <div style="font-size:12px;color:#888;margin-bottom:16px;">设置每位成员是否可以查看全部账单（默认只能看自己的）</div>
+      <table class="perm-table">
+        <thead><tr><th>姓名</th><th>角色</th><th>查看全部账单</th><th>修改密码</th></tr></thead>
+        <tbody id="perm-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 支出弹窗 -->
+<div class="overlay" id="modal-expense">
+  <div class="modal">
+    <div class="mhd"><h3 id="expense-title">添加支出</h3><button class="close-btn" onclick="closeModals()">×</button></div>
+    <div class="photo-upload-area">
+      <div class="photo-grid" id="photo-grid-e"></div>
+      <div class="photo-count" id="photo-count-e">最多可上传 5 张小票图片</div>
+    </div>
+    <input type="file" id="file-inp-e" accept="image/*" style="display:none" onchange="handleFile(this,'expense')">
+    <div class="ai-box" id="ai-box-e"><div class="ai-badge">✨ AI识别结果</div><div id="ai-text-e"></div></div>
+    <div class="frow">
+      <div class="fg"><label>商家 / 描述 *</label><input type="text" id="e-merchant" placeholder="例：家乐福"></div>
+      <div class="fg">
+        <label>金额 *</label>
+        <div class="amt-row">
+          <select id="e-currency" onchange="onCurrencyChange()"><option value="AED">AED 迪拉姆</option><option value="CNY">CNY 人民币</option></select>
+          <input type="number" id="e-amount" placeholder="0.00" step="0.01" min="0" oninput="onAmountChange()">
+        </div>
+        <div class="conv-box" id="conv-box">💱 按汇率 2:1 换算 → <span id="conv-result" style="font-weight:600;"></span> AED <span style="color:#aaa;font-size:11px;">（最终按AED结算）</span></div>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label>消费人 *</label>
+        <select id="e-person"><option value="">请选择</option>
+          <option>刘承林</option><option>保姆</option><option>徐慧</option><option>司机</option><option>杨文辉</option>
+        </select>
+      </div>
+      <div class="fg"><label>类型</label>
+        <select id="e-cat">
+          <option>买菜</option><option>官邸日常用品</option><option>亚马逊采购</option>
+          <option>家乐福采购</option><option>国内采购</option><option>汽车加油</option>
+          <option>汽车维修保养</option><option>停车费</option><option>固定开销</option><option>手续费</option>
+        </select>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label>日期</label><input type="date" id="e-date"></div>
+      <div class="fg"><label>支付方式</label><select id="e-pay"><option>WIO</option><option>FAB</option><option>NBD</option><option>现金</option></select></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label>状态</label><select id="e-status"><option>已确认</option><option>待确认</option></select></div>
+      <div class="fg"></div>
+    </div>
+    <div class="fg" style="margin-bottom:0;"><label>备注 / 明细</label><textarea id="e-note" rows="2" placeholder="可选"></textarea></div>
+    <div class="actions">
+      <button class="btn btn-s" onclick="closeModals()">取消</button>
+      <button class="btn btn-p" id="expense-save-btn" onclick="saveExpense()">保存支出</button>
+    </div>
+  </div>
+</div>
+
+<!-- 收入弹窗 -->
+<div class="overlay" id="modal-income">
+  <div class="modal">
+    <div class="mhd"><h3 id="income-title">添加收入</h3><button class="close-btn" onclick="closeModals()">×</button></div>
+    <div class="income-hint">💰 上传转账截图，AI 自动识别打款人、收款人和金额</div>
+    <div class="photo-upload-area">
+      <div class="photo-grid" id="photo-grid-i"></div>
+      <div class="photo-count" id="photo-count-i">最多可上传 5 张转账截图</div>
+    </div>
+    <input type="file" id="file-inp-i" accept="image/*" style="display:none" onchange="handleFile(this,'income')">
+    <div class="ai-box" id="ai-box-i"><div class="ai-badge">✨ AI识别结果</div><div id="ai-text-i"></div></div>
+    <div class="frow-3">
+      <div class="fg"><label>打款人 *</label><input type="text" id="i-payer" placeholder="打款方名称"></div>
+      <div class="fg"><label>收款人 *</label><input type="text" id="i-payee" placeholder="收款方名称"></div>
+      <div class="fg"><label>收款金额（AED）*</label><input type="number" id="i-amount" placeholder="0.00" step="0.01" min="0"></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label>日期</label><input type="date" id="i-date"></div>
+      <div class="fg"><label>状态</label><select id="i-status"><option>已确认</option><option>待确认</option></select></div>
+    </div>
+    <div class="fg" style="margin-bottom:0;"><label>备注</label><textarea id="i-note" rows="2" placeholder="可选"></textarea></div>
+    <div class="actions">
+      <button class="btn btn-s" onclick="closeModals()">取消</button>
+      <button class="btn btn-green" id="income-save-btn" onclick="saveIncome()">保存收入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 改密码弹窗 -->
+<div class="overlay" id="modal-pwd">
+  <div class="modal" style="width:360px;">
+    <div class="mhd"><h3>修改密码</h3><button class="close-btn" onclick="closeModals()">×</button></div>
+    <div class="fg" style="margin-bottom:12px;"><label>姓名</label><input type="text" id="pwd-name" readonly style="background:#f5f5f5;"></div>
+    <div class="fg" style="margin-bottom:12px;"><label>新密码</label><input type="password" id="pwd-new" placeholder="请输入新密码"></div>
+    <div class="fg" style="margin-bottom:0;"><label>确认密码</label><input type="password" id="pwd-confirm" placeholder="再次输入新密码"></div>
+    <div class="actions">
+      <button class="btn btn-s" onclick="closeModals()">取消</button>
+      <button class="btn btn-p" onclick="savePwd()">保存密码</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">×</button>
+  <img id="lightbox-img" src="" alt="图片">
+</div>
+
+<script>
+const SUPABASE_URL='https://ljwyxypinhkwpvxzjxwj.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxqd3l4eXBpbmhrd3B2eHpqeHdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzMTU1MTgsImV4cCI6MjA5Mzg5MTUxOH0.Zzyk4a818b8bwbu-p9V9z5wKSN_XCZKJ38ba3hL-gks';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const PEOPLE=['刘承林','保姆','徐慧','司机','杨文辉'];
+const COLORS=[['#ede9fe','#4c1d95'],['#d1fae5','#064e3b'],['#dbeafe','#1e3a8a'],['#fef3c7','#78350f'],['#fce7f3','#831843']];
+const CNY_RATE=2;
+
+let expenses=[],incomes=[],users=[];
+let currentUser=null;
+let editExpenseId=null,editIncomeId=null,pwdUserId=null;
+let apiKey='',currentPhotosE=[],currentPhotosI=[];
+
+function gc(n){const i=PEOPLE.indexOf(n)%COLORS.length;return COLORS[i>=0?i:0];}
+function ini(n){return n?n.slice(0,2):'?';}
+function today(){return new Date().toISOString().split('T')[0];}
+function curMonth(){return new Date().toISOString().slice(0,7);}
+function toAED(b){const a=parseFloat(b.amount||0);return b.currency==='CNY'?a/CNY_RATE:a;}
+
+/* ── Auth ── */
+async function doLogin(){
+  const name=document.getElementById('login-name').value;
+  const pass=document.getElementById('login-pass').value;
+  if(!name||!pass){showLoginErr('请选择姓名并输入密码');return;}
+  
+  // Debug: test connection first
+  const {data:testData, error:testError} = await sb.from('users').select('count');
+  console.log('Connection test:', testData, testError);
+  
+  const{data,error}=await sb.from('users').select('*').eq('name',name).eq('password',pass).single();
+  console.log('Login result:', data, error);
+  
+  if(error||!data){
+    showLoginErr('用户名或密码错误：' + (error?.message||'未知错误'));
+    return;
+  }
+  currentUser=data;
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('main-app').style.display='block';
+  document.getElementById('user-display').textContent=currentUser.name;
+  if(currentUser.role==='admin'){
+    document.getElementById('admin-tag').style.display='inline';
+    document.getElementById('admin-tab').style.display='inline-block';
+  }
+  const k=localStorage.getItem('team_api_key');
+  if(k){apiKey=k;document.getElementById('api-key-input').value=k;updateKeyStatus();}
+  document.getElementById('exp-month').value=curMonth();
+  await loadAll();
+}
+
+function showLoginErr(msg){const el=document.getElementById('login-err');el.textContent=msg;el.style.display='block';}
+
+function doLogout(){
+  currentUser=null;
+  document.getElementById('main-app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('login-pass').value='';
+  document.getElementById('login-err').style.display='none';
+}
+
+/* ── Data Load ── */
+async function loadAll(){
+  const isAdmin=currentUser.role==='admin';
+  const canViewAll=currentUser.can_view_all||isAdmin;
+
+  // Load expenses
+  let eq=sb.from('expenses').select('*').order('date',{ascending:false});
+  if(!canViewAll) eq=eq.eq('person',currentUser.name);
+  const{data:ed}=await eq;
+  expenses=ed||[];
+
+  // Load incomes
+  let iq=sb.from('incomes').select('*').order('date',{ascending:false});
+  if(!canViewAll) iq=iq.eq('payee',currentUser.name);
+  const{data:id}=await iq;
+  incomes=id||[];
+
+  // Load users (admin only)
+  if(isAdmin){
+    const{data:ud}=await sb.from('users').select('*').order('name');
+    users=ud||[];
+  }
+
+  render();
+}
+
+function saveKey(val){apiKey=val.trim();try{localStorage.setItem('team_api_key',apiKey);}catch(e){}updateKeyStatus();}
+function updateKeyStatus(){
+  document.getElementById('api-status').innerHTML=apiKey.startsWith('sk-ant-')
+    ?'<span class="dot dot-on"></span> 已配置'
+    :'<span class="dot dot-off"></span> 未配置';
+}
+
+/* ── Render ── */
+function render(){renderMetrics();renderAll();renderExpense();renderIncome();renderSummary();renderExport();renderAdmin();syncSelects();}
+
+function renderMetrics(){
+  const m=curMonth();
+  const eT=expenses.filter(b=>b.date&&b.date.startsWith(m)).reduce((s,b)=>s+toAED(b),0);
+  const iT=incomes.filter(b=>b.date&&b.date.startsWith(m)).reduce((s,b)=>s+parseFloat(b.amount||0),0);
+  document.getElementById('m-total').textContent=eT.toFixed(2);
+  document.getElementById('m-income').textContent=iT.toFixed(2);
+  document.getElementById('m-balance').textContent=(iT-eT).toFixed(2);
+  document.getElementById('m-count').textContent=expenses.length+incomes.length;
+}
+
+function billHTML(b,type){
+  const isInc=type==='income';
+  const[bg,tc]=isInc?['#f6ffed','#237804']:gc(b.person);
+  const name=isInc?`${b.payer||''} → ${b.payee||''}`:b.merchant||'未知商家';
+  const isCNY=!isInc&&b.currency==='CNY';
+  const aedAmt=isInc?parseFloat(b.amount||0):toAED(b);
+  const isAdmin=currentUser&&currentUser.role==='admin';
+  const canEdit=isAdmin||(b.person===currentUser?.name)||(b.payee===currentUser?.name)||(b.created_by===currentUser?.name);
+
+  let amtHTML;
+  if(isInc) amtHTML=`<div class="bill-amt amt-income">AED ${parseFloat(b.amount||0).toFixed(2)}</div>`;
+  else if(isCNY) amtHTML=`<div class="bill-amt">¥ ${parseFloat(b.amount||0).toFixed(2)}</div><div class="bill-amt-aed">≈ AED ${aedAmt.toFixed(2)}</div>`;
+  else amtHTML=`<div class="bill-amt">AED ${parseFloat(b.amount||0).toFixed(2)}</div>`;
+
+  const meta=isInc
+    ?`<span>${b.date||''}</span><span class="tag tag-收入">收入</span><span class="sdot sdot-${b.status}"></span>`
+    :`<span class="sdot sdot-${b.status}"></span><span>${b.person||'未分配'}</span><span>·</span><span>${b.date||''}</span><span>·</span><span class="tag tag-${b.category}">${b.category}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span>·</span><span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${b.payment||''}</span>`;
+  const photos=(b.photos&&b.photos.length)?`<div class="bill-photos">${b.photos.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')">`).join('')}</div>`:'';
+  const edf=isInc?`editIncome('${b.id}')`:`editExpense('${b.id}')`;
+  const dlf=isInc?`delIncome('${b.id}')`:`delExpense('${b.id}')`;
+  const editBtns=canEdit?`<div style="display:flex;gap:4px;"><button class="action-btn" onclick="${edf}">✏️</button><button class="action-btn" onclick="${dlf}">🗑️</button></div>`:'';
+
+  return`<div class="bill-item${isInc?' income-item':''}">
+    <div class="avatar" style="background:${bg};color:${tc};">${isInc?'💰':ini(b.person)}</div>
+    <div class="bill-info">
+      <div class="bill-name">${name}</div>
+      <div class="bill-meta">${meta}</div>
+      ${b.note?`<span class="item-note">${b.note}</span>`:''}${photos}
+    </div>
+    <div class="bill-right"><div>${amtHTML}</div>${editBtns}</div>
+  </div>`;
+}
+
+function renderAll(){
+  const fp=document.getElementById('fp').value,ft=document.getElementById('ftype').value;
+  let items=[];
+  if(ft!=='income')expenses.forEach(b=>{if(!fp||b.person===fp)items.push({...b,_t:'expense'});});
+  if(ft!=='expense')incomes.forEach(b=>{if(!fp)items.push({...b,_t:'income'});});
+  items.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const el=document.getElementById('all-list');
+  el.innerHTML=items.length?items.map(b=>billHTML(b,b._t)).join(''):'<div class="empty"><span class="empty-icon">📭</span>暂无记录</div>';
+}
+
+function renderExpense(){
+  const fp=document.getElementById('fp2').value,fc=document.getElementById('fc2').value;
+  const fpay=document.getElementById('fpay2').value,fs=document.getElementById('fs2').value;
+  const list=expenses.filter(b=>(!fp||b.person===fp)&&(!fc||b.category===fc)&&(!fpay||b.payment===fpay)&&(!fs||b.status===fs));
+  const el=document.getElementById('expense-list');
+  el.innerHTML=list.length?list.map(b=>billHTML(b,'expense')).join(''):'<div class="empty"><span class="empty-icon">📭</span>暂无支出记录</div>';
+}
+
+function renderIncome(){
+  const payer=document.getElementById('fi-payer').value,payee=document.getElementById('fi-payee').value;
+  const list=incomes.filter(b=>(!payer||b.payer===payer)&&(!payee||b.payee===payee));
+  const el=document.getElementById('income-list');
+  el.innerHTML=list.length?list.map(b=>billHTML(b,'income')).join(''):'<div class="empty"><span class="empty-icon">💰</span>暂无收入记录</div>';
+}
+
+function renderSummary(){
+  const month=document.getElementById('sum-month').value;
+  const cat=document.getElementById('sum-cat').value;
+  const filtered=expenses.filter(b=>(!month||(b.date&&b.date.startsWith(month)))&&(!cat||b.category===cat));
+  const eT=filtered.reduce((s,b)=>s+toAED(b),0);
+
+  const eMap={};
+  filtered.forEach(b=>{if(!b.person)return;if(!eMap[b.person])eMap[b.person]={count:0,amount:0};eMap[b.person].count++;eMap[b.person].amount+=toAED(b);});
+  document.getElementById('sum-body').innerHTML=Object.entries(eMap).sort((a,b)=>b[1].amount-a[1].amount).map(([n,d])=>{
+    const[bg,tc]=gc(n);const pct=eT>0?(d.amount/eT*100):0;
+    return`<tr><td><span class="pav" style="background:${bg};color:${tc};">${ini(n)}</span>${n}</td><td>${d.count}</td><td style="font-weight:600;">AED ${d.amount.toFixed(2)}</td><td><div style="font-size:12px;color:#888;">${pct.toFixed(1)}%</div><div class="bar-bg"><div class="bar-fg" style="width:${pct}%;"></div></div></td></tr>`;
+  }).join('')||'<tr><td colspan="4" class="empty" style="padding:1.5rem;">暂无数据</td></tr>';
+
+  const cMap={};
+  filtered.forEach(b=>{if(!b.category)return;if(!cMap[b.category])cMap[b.category]={count:0,amount:0};cMap[b.category].count++;cMap[b.category].amount+=toAED(b);});
+  document.getElementById('sum-cat-body').innerHTML=Object.entries(cMap).sort((a,b)=>b[1].amount-a[1].amount).map(([c,d])=>{
+    const pct=eT>0?(d.amount/eT*100):0;
+    return`<tr><td><span class="tag tag-${c}">${c}</span></td><td>${d.count}</td><td style="font-weight:600;">AED ${d.amount.toFixed(2)}</td><td><div style="font-size:12px;color:#888;">${pct.toFixed(1)}%</div><div class="bar-bg"><div class="bar-fg" style="width:${pct}%;background:#13c2c2;"></div></div></td></tr>`;
+  }).join('')||'<tr><td colspan="4" class="empty" style="padding:1.5rem;">暂无数据</td></tr>';
+
+  const iFiltered=incomes.filter(b=>!month||(b.date&&b.date.startsWith(month)));
+  const iT=iFiltered.reduce((s,b)=>s+parseFloat(b.amount||0),0);
+  const iMap={};
+  iFiltered.forEach(b=>{if(!b.payee)return;if(!iMap[b.payee])iMap[b.payee]={count:0,amount:0};iMap[b.payee].count++;iMap[b.payee].amount+=parseFloat(b.amount||0);});
+  document.getElementById('income-sum-body').innerHTML=Object.entries(iMap).sort((a,b)=>b[1].amount-a[1].amount).map(([n,d])=>{
+    const pct=iT>0?(d.amount/iT*100):0;
+    return`<tr><td><span class="pav" style="background:#f6ffed;color:#237804;">${ini(n)}</span>${n}</td><td>${d.count}</td><td style="font-weight:600;color:#389e0d;">AED ${d.amount.toFixed(2)}</td><td><div style="font-size:12px;color:#888;">${pct.toFixed(1)}%</div><div class="bar-bg"><div class="bar-fg" style="width:${pct}%;background:#52c41a;"></div></div></td></tr>`;
+  }).join('')||'<tr><td colspan="4" class="empty" style="padding:1.5rem;">暂无数据</td></tr>';
+}
+
+function renderAdmin(){
+  if(!currentUser||currentUser.role!=='admin') return;
+  const tb=document.getElementById('perm-body');
+  tb.innerHTML=users.map(u=>`<tr>
+    <td style="font-weight:500;">${u.name}</td>
+    <td><span style="font-size:12px;color:${u.role==='admin'?'#d46b08':'#888'};">${u.role==='admin'?'管理员':'成员'}</span></td>
+    <td>
+      ${u.role==='admin'?'<span style="font-size:12px;color:#aaa;">全部可见</span>':`
+      <label class="toggle">
+        <input type="checkbox" ${u.can_view_all?'checked':''} onchange="togglePerm('${u.id}',this.checked)">
+        <span class="slider"></span>
+      </label>`}
+    </td>
+    <td><button class="btn btn-s btn-sm" onclick="openPwd('${u.id}','${u.name}')">改密码</button></td>
+  </tr>`).join('');
+}
+
+function renderExport(){
+  const month=document.getElementById('exp-month').value;
+  const etype=document.getElementById('exp-type').value;
+  const eList=etype!=='income'?expenses.filter(b=>!month||(b.date&&b.date.startsWith(month))):[];
+  const iList=etype!=='expense'?incomes.filter(b=>!month||(b.date&&b.date.startsWith(month))):[];
+  if(!eList.length&&!iList.length){document.getElementById('exp-pre').textContent='暂无数据';return;}
+  const eT=eList.reduce((s,b)=>s+toAED(b),0);
+  const iT=iList.reduce((s,b)=>s+parseFloat(b.amount||0),0);
+  let t=`【官邸每月流水账】${month||'全部月份'}（以AED结算）\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  if(eList.length){
+    t+=`▌支出明细\n`;
+    eList.forEach(b=>{
+      const aed=toAED(b);const orig=b.currency==='CNY'?` (¥${parseFloat(b.amount).toFixed(2)})`:'';
+      t+=`${b.date}  ${(b.person||'').padEnd(4)}  ${(b.merchant||'').substring(0,12).padEnd(12)}  AED ${aed.toFixed(2).padStart(8)}${orig}  [${b.category}] ${b.payment||''}\n`;
+    });
+    t+=`支出合计：AED ${eT.toFixed(2)}\n\n`;
+  }
+  if(iList.length){
+    t+=`▌收入明细\n`;
+    iList.forEach(b=>{t+=`${b.date}  ${(b.payer||'').padEnd(8)} → ${(b.payee||'').padEnd(4)}  AED ${parseFloat(b.amount).toFixed(2).padStart(8)}\n`;});
+    t+=`收入合计：AED ${iT.toFixed(2)}\n\n`;
+  }
+  if(eList.length&&iList.length)t+=`本月结余：AED ${(iT-eT).toFixed(2)}`;
+  document.getElementById('exp-pre').textContent=t;
+}
+
+function syncSelects(){
+  const eppl=[...new Set(expenses.map(b=>b.person).filter(Boolean))];
+  ['fp','fp2'].forEach(id=>{const sel=document.getElementById(id);const v=sel.value;sel.innerHTML=sel.options[0].outerHTML+eppl.map(p=>`<option${p===v?' selected':''}>${p}</option>`).join('');});
+  const payers=[...new Set(incomes.map(b=>b.payer).filter(Boolean))];
+  const payees=[...new Set(incomes.map(b=>b.payee).filter(Boolean))];
+  const ps=document.getElementById('fi-payer');const pv=ps.value;
+  ps.innerHTML=ps.options[0].outerHTML+payers.map(p=>`<option${p===pv?' selected':''}>${p}</option>`).join('');
+  const pe=document.getElementById('fi-payee');const pev=pe.value;
+  pe.innerHTML=pe.options[0].outerHTML+payees.map(p=>`<option${p===pev?' selected':''}>${p}</option>`).join('');
+  const months=[...new Set([...expenses,...incomes].map(b=>b.date&&b.date.slice(0,7)).filter(Boolean))].sort().reverse();
+  const sm=document.getElementById('sum-month');const sv=sm.value;
+  sm.innerHTML='<option value="">全部月份</option>'+months.map(m=>`<option${m===sv?' selected':''}>${m}</option>`).join('');
+}
+
+function switchTab(t,el){
+  document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.sec').forEach(e=>e.classList.remove('active'));
+  el.classList.add('active');document.getElementById('tab-'+t).classList.add('active');
+  if(t==='export')renderExport();if(t==='summary')renderSummary();if(t==='admin')renderAdmin();
+}
+
+/* ── Currency ── */
+function onCurrencyChange(){onAmountChange();}
+function onAmountChange(){
+  const cur=document.getElementById('e-currency').value;
+  const amt=parseFloat(document.getElementById('e-amount').value||0);
+  const box=document.getElementById('conv-box');
+  if(cur==='CNY'&&amt>0){document.getElementById('conv-result').textContent=(amt/CNY_RATE).toFixed(2);box.style.display='block';}
+  else box.style.display='none';
+}
+
+/* ── Photos ── */
+function renderPhotoGrid(photos,gridId,countId,fileId,mode){
+  const grid=document.getElementById(gridId);
+  let html=photos.map((src,i)=>`<div class="photo-thumb"><img src="${src}" onclick="openLightbox('${src}')"><button class="del-photo" onclick="removePhoto(${i},'${mode}')">×</button></div>`).join('');
+  if(photos.length<5)html+=`<div class="photo-add-btn" onclick="document.getElementById('${fileId}').click()"><span>📷</span><span style="font-size:10px;">${photos.length===0?(apiKey.startsWith('sk-ant-')?'AI识别':'上传'):'继续添加'}</span></div>`;
+  grid.innerHTML=html;
+  document.getElementById(countId).textContent=photos.length===0?'最多可上传 5 张图片':`已上传 ${photos.length} / 5 张`;
+}
+function removePhoto(i,mode){
+  if(mode==='expense'){currentPhotosE.splice(i,1);renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');}
+  else{currentPhotosI.splice(i,1);renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');}
+}
+function handleFile(inp,mode){
+  const file=inp.files[0];if(!file)return;
+  const photos=mode==='expense'?currentPhotosE:currentPhotosI;
+  if(photos.length>=5){alert('最多只能上传 5 张图片');inp.value='';return;}
+  const reader=new FileReader();
+  reader.onload=e=>{
+    photos.push(e.target.result);inp.value='';
+    if(mode==='expense')renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');
+    else renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
+    if(photos.length===1&&apiKey.startsWith('sk-ant-'))recognizeWithAI(e.target.result,file.type,mode);
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ── AI ── */
+async function recognizeWithAI(dataUrl,type,mode){
+  const boxId=mode==='expense'?'ai-box-e':'ai-box-i';
+  const txtId=mode==='expense'?'ai-text-e':'ai-text-i';
+  const box=document.getElementById(boxId);const txt=document.getElementById(txtId);
+  box.style.display='block';txt.innerHTML='<span class="pulse">✨ AI识别中，请稍候...</span>';
+  const prompt=mode==='expense'
+    ?'请识别这张收据/账单图片，只返回JSON，格式：{"merchant":"商家名称","amount":"纯数字金额","currency":"AED或CNY","date":"YYYY-MM-DD","category":"买菜/官邸日常用品/亚马逊采购/家乐福采购/国内采购/汽车加油/汽车维修保养/停车费/固定开销/手续费","note":"明细备注"}。识别不到填空字符串，currency默认AED。'
+    :'请识别这张转账记录/收款截图，只返回JSON，格式：{"payer":"打款人名称","payee":"收款人名称","amount":"纯数字金额","date":"YYYY-MM-DD","note":"备注说明"}。识别不到填空字符串。';
+  try{
+    const base64=dataUrl.split(',')[1];
+    const mediaType=type.startsWith('image/')?type:'image/jpeg';
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,
+        messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mediaType,data:base64}},{type:'text',text:prompt}]}]})
+    });
+    const data=await resp.json();
+    if(data.error)throw new Error(data.error.message);
+    let p;try{p=JSON.parse((data.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim());}catch(e){p={};}
+    if(mode==='expense'){
+      if(p.merchant)document.getElementById('e-merchant').value=p.merchant;
+      if(p.amount)document.getElementById('e-amount').value=p.amount;
+      if(p.currency&&['AED','CNY'].includes(p.currency))document.getElementById('e-currency').value=p.currency;
+      if(p.date)document.getElementById('e-date').value=p.date;
+      if(p.category)document.getElementById('e-cat').value=p.category;
+      if(p.note)document.getElementById('e-note').value=p.note;
+      onAmountChange();
+      const cur=p.currency||'AED';
+      txt.innerHTML=p.merchant||p.amount?`✅ 已自动填写：<b>${p.merchant||'-'}</b> · ${cur} ${p.amount||'-'} · ${p.category||'-'}${cur==='CNY'?` <span style="color:#d46b08">→ AED ${(parseFloat(p.amount||0)/CNY_RATE).toFixed(2)}</span>`:''}`: '⚠️ 未能识别，请手动填写';
+    }else{
+      if(p.payer)document.getElementById('i-payer').value=p.payer;
+      if(p.payee)document.getElementById('i-payee').value=p.payee;
+      if(p.amount)document.getElementById('i-amount').value=p.amount;
+      if(p.date)document.getElementById('i-date').value=p.date;
+      if(p.note)document.getElementById('i-note').value=p.note;
+      txt.innerHTML=p.payer||p.amount?`✅ 已自动填写：<b>${p.payer||'-'}</b> → <b>${p.payee||'-'}</b> · AED ${p.amount||'-'}`:'⚠️ 未能识别，请手动填写';
+    }
+  }catch(e){document.getElementById(txtId).innerHTML='❌ 识别失败：'+(e.message||'请检查 API Key');}
+}
+
+/* ── Expense CRUD ── */
+function openAdd(){
+  editExpenseId=null;currentPhotosE=[];
+  document.getElementById('expense-title').textContent='添加支出';
+  document.getElementById('expense-save-btn').textContent='保存支出';
+  ['e-merchant','e-amount','e-note'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('e-person').value=currentUser?.name||'';
+  document.getElementById('e-cat').value='买菜';document.getElementById('e-currency').value='AED';
+  document.getElementById('conv-box').style.display='none';
+  document.getElementById('e-date').value=today();document.getElementById('e-pay').value='WIO';
+  document.getElementById('e-status').value='已确认';document.getElementById('ai-box-e').style.display='none';
+  renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');
+  document.getElementById('modal-expense').classList.add('open');
+}
+
+function editExpense(id){
+  const b=expenses.find(x=>x.id===id);if(!b)return;
+  editExpenseId=id;currentPhotosE=b.photos?[...b.photos]:[];
+  document.getElementById('expense-title').textContent='编辑支出';
+  document.getElementById('expense-save-btn').textContent='保存修改';
+  document.getElementById('e-merchant').value=b.merchant||'';document.getElementById('e-amount').value=b.amount||'';
+  document.getElementById('e-currency').value=b.currency||'AED';
+  document.getElementById('e-person').value=b.person||'';document.getElementById('e-cat').value=b.category||'买菜';
+  document.getElementById('e-date').value=b.date||'';document.getElementById('e-pay').value=b.payment||'WIO';
+  document.getElementById('e-status').value=b.status||'已确认';document.getElementById('e-note').value=b.note||'';
+  document.getElementById('ai-box-e').style.display='none';onAmountChange();
+  renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');
+  document.getElementById('modal-expense').classList.add('open');
+}
+
+async function saveExpense(){
+  const merchant=document.getElementById('e-merchant').value.trim();
+  const amount=document.getElementById('e-amount').value;
+  const person=document.getElementById('e-person').value;
+  if(!merchant||!amount||!person){alert('请填写商家、金额和消费人');return;}
+  const row={merchant,amount:parseFloat(amount),currency:document.getElementById('e-currency').value,
+    person,category:document.getElementById('e-cat').value,date:document.getElementById('e-date').value,
+    status:document.getElementById('e-status').value,payment:document.getElementById('e-pay').value,
+    note:document.getElementById('e-note').value.trim(),photos:currentPhotosE,created_by:currentUser.name};
+  if(editExpenseId){
+    await sb.from('expenses').update(row).eq('id',editExpenseId);
+  }else{
+    await sb.from('expenses').insert(row);
+  }
+  closeModals();await loadAll();
+}
+
+async function delExpense(id){
+  if(!confirm('确认删除这条支出记录？'))return;
+  await sb.from('expenses').delete().eq('id',id);
+  await loadAll();
+}
+
+/* ── Income CRUD ── */
+function openIncome(){
+  editIncomeId=null;currentPhotosI=[];
+  document.getElementById('income-title').textContent='添加收入';
+  document.getElementById('income-save-btn').textContent='保存收入';
+  ['i-payer','i-payee','i-amount','i-note'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('i-date').value=today();document.getElementById('i-status').value='已确认';
+  document.getElementById('ai-box-i').style.display='none';
+  renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
+  document.getElementById('modal-income').classList.add('open');
+}
+
+function editIncome(id){
+  const b=incomes.find(x=>x.id===id);if(!b)return;
+  editIncomeId=id;currentPhotosI=b.photos?[...b.photos]:[];
+  document.getElementById('income-title').textContent='编辑收入';
+  document.getElementById('income-save-btn').textContent='保存修改';
+  document.getElementById('i-payer').value=b.payer||'';document.getElementById('i-payee').value=b.payee||'';
+  document.getElementById('i-amount').value=b.amount||'';document.getElementById('i-date').value=b.date||'';
+  document.getElementById('i-status').value=b.status||'已确认';document.getElementById('i-note').value=b.note||'';
+  document.getElementById('ai-box-i').style.display='none';
+  renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
+  document.getElementById('modal-income').classList.add('open');
+}
+
+async function saveIncome(){
+  const payer=document.getElementById('i-payer').value.trim();
+  const payee=document.getElementById('i-payee').value.trim();
+  const amount=document.getElementById('i-amount').value;
+  if(!payer||!payee||!amount){alert('请填写打款人、收款人和金额');return;}
+  const row={payer,payee,amount:parseFloat(amount),date:document.getElementById('i-date').value,
+    status:document.getElementById('i-status').value,note:document.getElementById('i-note').value.trim(),
+    photos:currentPhotosI,created_by:currentUser.name};
+  if(editIncomeId){await sb.from('incomes').update(row).eq('id',editIncomeId);}
+  else{await sb.from('incomes').insert(row);}
+  closeModals();await loadAll();
+}
+
+async function delIncome(id){
+  if(!confirm('确认删除这条收入记录？'))return;
+  await sb.from('incomes').delete().eq('id',id);
+  await loadAll();
+}
+
+/* ── Admin ── */
+async function togglePerm(userId,val){
+  await sb.from('users').update({can_view_all:val}).eq('id',userId);
+  const u=users.find(x=>x.id===userId);if(u)u.can_view_all=val;
+}
+
+function openPwd(uid,name){
+  pwdUserId=uid;
+  document.getElementById('pwd-name').value=name;
+  document.getElementById('pwd-new').value='';
+  document.getElementById('pwd-confirm').value='';
+  document.getElementById('modal-pwd').classList.add('open');
+}
+
+async function savePwd(){
+  const np=document.getElementById('pwd-new').value.trim();
+  const cp=document.getElementById('pwd-confirm').value.trim();
+  if(!np){alert('请输入新密码');return;}
+  if(np!==cp){alert('两次密码不一致');return;}
+  await sb.from('users').update({password:np}).eq('id',pwdUserId);
+  alert('密码修改成功');closeModals();
+}
+
+function closeModals(){
+  ['modal-expense','modal-income','modal-pwd'].forEach(id=>document.getElementById(id).classList.remove('open'));
+}
+
+/* ── Lightbox ── */
+function openLightbox(src){document.getElementById('lightbox-img').src=src;document.getElementById('lightbox').classList.add('open');}
+function closeLightbox(){document.getElementById('lightbox').classList.remove('open');}
+
+/* ── Export ── */
+function exportCSV(){
+  const month=document.getElementById('exp-month').value;
+  const etype=document.getElementById('exp-type').value;
+  const eList=etype!=='income'?expenses.filter(b=>!month||(b.date&&b.date.startsWith(month))):[];
+  const iList=etype!=='expense'?incomes.filter(b=>!month||(b.date&&b.date.startsWith(month))):[];
+  let rows=['类型,日期,商家/打款人,原始金额,币种,AED金额,消费人/收款人,类目,支付方式,状态,备注'];
+  eList.forEach(b=>rows.push(`支出,${b.date},${b.merchant},${b.amount},${b.currency||'AED'},${toAED(b).toFixed(2)},${b.person},${b.category},${b.payment||''},${b.status},"${b.note||''}"`));
+  iList.forEach(b=>rows.push(`收入,${b.date},${b.payer},${b.amount},AED,${b.amount},${b.payee},收入,,${b.status},"${b.note||''}"`));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\uFEFF'+rows.join('\n')],{type:'text/csv;charset=utf-8;'}));
+  a.download=`官邸流水账_${month||'全部'}.csv`;a.click();
+}
+function copyText(){navigator.clipboard.writeText(document.getElementById('exp-pre').textContent).then(()=>alert('✅ 已复制，可直接发给财务'));}
+</script>
+</body>
+</html>
