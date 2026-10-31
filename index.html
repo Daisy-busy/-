@@ -478,17 +478,21 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div id="pc-balance-hint" style="background:#fffbe6;border:1px solid #ffd591;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:#d46b08;display:none;"></div>
     <div class="frow">
       <div class="fg"><label>发放人 / Giver *</label>
-        <select id="pc-giver" onchange="onPcGiverChange()">
+        <select id="pc-giver" onchange="onPcGiverChange();onPcDriverToggle()">
           <option value="">请选择 / Select</option>
           <option value="徐慧">徐慧 / Xu Hui</option><option value="刘承林">刘承林 / Liu Chenglin</option><option value="保姆">保姆 / Nanny</option><option value="司机">司机 / Driver</option><option value="杨文辉">杨文辉 / Yang Wenhui</option>
         </select>
       </div>
       <div class="fg"><label class="t-receiver">收款人 / Payee *</label>
-        <select id="pc-receiver">
+        <select id="pc-receiver" onchange="onPcDriverToggle()">
           <option value="">请选择 / Select</option>
           <option value="刘承林">刘承林 / Liu Chenglin</option><option value="保姆">保姆 / Nanny</option><option value="司机">司机 / Driver</option><option value="杨文辉">杨文辉 / Yang Wenhui</option>
         </select>
       </div>
+    </div>
+    <div class="fg" id="pc-driver-box" style="display:none;margin-bottom:14px;"><label>具体司机 / Which driver *</label>
+      <select id="pc-driver"></select>
+      <div style="font-size:12px;color:#888;margin-top:4px;">会同步到用车系统该司机名下 / Syncs to this driver in Fleet</div>
     </div>
     <div class="frow">
       <div class="fg"><label class="t-amount-aed">金额（AED）*</label><input type="number" id="pc-amount" placeholder="0.00" step="0.01" min="0" oninput="onPcAmountChange()"></div>
@@ -785,6 +789,7 @@ async function loadAll(){
     incomes=results[1].data||[];
     pettyCash=results[2].data||[];
     if(isAdmin)users=results[3]?.data||[];
+    try{const d=await withTimeout(sb.from('fleet_drivers').select('*').eq('active',true).order('id'));if(!d.error)fleetDrivers=d.data||[];}catch(e){}
 
     if(rb)rb.textContent='🔄';
     render();
@@ -874,7 +879,7 @@ function renderMetrics(){
 function billHTML(b,type){
   const isInc=type==='income',isPetty=type==='petty';
   const[bg,tc]=isInc?['#f6ffed','#237804']:isPetty?['#fffbe6','#874d00']:gc(b.person);
-  const name=isInc?`${b.payer||''} → ${b.payee||''}`:isPetty?`${b.giver||''} → ${b.receiver||''}`:b.merchant||'?';
+  const name=isInc?`${b.payer||''} → ${b.payee||''}`:isPetty?`${b.giver==='司机'?driverLabel(b):(b.giver||'')} → ${b.receiver==='司机'?driverLabel(b):(b.receiver||'')}`:b.merchant||'?';
   const isCNY=!isInc&&!isPetty&&b.currency==='CNY';
   const aedAmt=isInc||isPetty?parseFloat(b.amount||0):toAED(b);
   const isAdmin=currentUser?.role==='admin';
@@ -958,6 +963,7 @@ function renderPetty(){
       ${givenOut>0?`<div class="row"><span>转出 / Out</span><span>${fmtAED(givenOut)}</span></div>`:''}
       <div class="row"><span>${t('used')}</span><span>${fmtAED(spent)}</span></div>
       <div class="balance ${bal>0?'balance-pos':bal<0?'balance-neg':'balance-zero'}">余额 ${fmtAED(bal)}</div>
+      ${name==='司机'?driverBreakdownHTML():''}
     </div>`;
   }).join('');
 
@@ -1373,6 +1379,17 @@ function normPay(p){
   return p;
 }
 function isPettyPay(p){return normPay(p)==='备用金';}
+function driverBreakdownHTML(){
+  const m={};const add=(k,v)=>{m[k]=(m[k]||0)+v;};
+  pettyCash.forEach(b=>{const a=parseFloat(b.amount||0),k=b.driver_name||'未指定';
+    if(b.receiver==='司机'&&b.giver!=='司机')add(k,a);
+    if(b.giver==='司机'&&b.receiver!=='司机')add(k,-a);});
+  expenses.forEach(b=>{if(b.person==='司机'&&isPettyPay(b.payment))add(b.driver_name||'未指定',-toAED(b));});
+  const rows=Object.entries(m).filter(([,v])=>Math.abs(v)>0.004);
+  if(!rows.length)return'';
+  return`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #eee;font-size:12px;">`+rows.map(([k,v])=>
+    `<div class="row"><span>${k}</span><span style="color:${v<0?'#cf1322':'#389e0d'}">${fmtAED(v)}</span></div>`).join('')+`</div>`;
+}
 function getPettyBalance(name){
   // Received from others
   const received=pettyCash.filter(b=>b.receiver===name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
@@ -1397,6 +1414,17 @@ function onPcAmountChange(){
   onPcGiverChange(); // refresh balance hint
 }
 
+let fleetDrivers=[];
+function driverInvolved(){return document.getElementById('pc-giver').value==='司机'||document.getElementById('pc-receiver').value==='司机';}
+function onPcDriverToggle(keepId){
+  const box=document.getElementById('pc-driver-box'),sel=document.getElementById('pc-driver');
+  const show=driverInvolved();box.style.display=show?'block':'none';
+  if(!show)return;
+  const cur=keepId!==undefined?keepId:sel.value;
+  sel.innerHTML='<option value="">请选择司机 / Select driver</option>'+fleetDrivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+  if(cur!==null&&cur!==undefined&&cur!=='')sel.value=String(cur);
+}
+function driverLabel(b){return b.driver_name?`司机·${b.driver_name}`:'司机';}
 let pettyMode='give'; // 'give' = 发放, 'receive' = 收到登记
 const PETTY_NAMES={'徐慧':'徐慧 / Xu Hui','刘承林':'刘承林 / Liu Chenglin','保姆':'保姆 / Nanny','司机':'司机 / Driver','杨文辉':'杨文辉 / Yang Wenhui'};
 
@@ -1430,6 +1458,7 @@ async function openPettyReceive(){
   document.getElementById('pc-date').value=today();
   document.getElementById('pc-note').value='';
   document.getElementById('pc-balance-hint').style.display='none';
+  onPcDriverToggle('');
   document.getElementById('modal-petty').classList.add('open');
 }
 
@@ -1445,7 +1474,7 @@ async function openPetty(){
   document.getElementById('pc-date').value=today();
   document.getElementById('pc-note').value='';
   document.getElementById('pc-balance-hint').style.display='none';
-  onPcGiverChange();
+  onPcGiverChange();onPcDriverToggle('');
   document.getElementById('modal-petty').classList.add('open');
 }
 
@@ -1462,7 +1491,7 @@ function editPetty(id){
   document.getElementById('pc-amount').value=b.amount||'';
   document.getElementById('pc-date').value=b.date||'';
   document.getElementById('pc-note').value=b.note||'';
-  onPcGiverChange();
+  onPcGiverChange();onPcDriverToggle(b.driver_id??'');
   document.getElementById('modal-petty').classList.add('open');
 }
 
@@ -1480,7 +1509,13 @@ async function savePetty(){
       return;
     }
   }
-  const row={giver,receiver,amount,
+  let driver_id=null,driver_name=null;
+  if(giver==='司机'||receiver==='司机'){
+    const v=document.getElementById('pc-driver').value;
+    if(!v){alert('请选择具体是哪位司机 / Please select the driver');return;}
+    const d=fleetDrivers.find(x=>String(x.id)===v);driver_id=parseInt(v);driver_name=d?d.name:null;
+  }
+  const row={giver,receiver,amount,driver_id,driver_name,
     date:document.getElementById('pc-date').value,
     note:document.getElementById('pc-note').value.trim(),
     created_by:currentUser.name};
