@@ -225,10 +225,17 @@ input:checked+.slider:before{transform:translateX(18px);}
   </div>
 
   <div class="metric-grid">
-    <div class="metric"><div class="ml t-m-expense">支出 / Expense（AED）</div><div class="mv" id="m-total">0</div></div>
-    <div class="metric income-metric"><div class="ml t-m-income">收入 / Income（AED）</div><div class="mv mv-income" id="m-income">0</div></div>
-    <div class="metric balance-metric"><div class="ml t-m-balance">结余 / Balance（AED）</div><div class="mv mv-balance" id="m-balance">0</div></div>
-    <div class="metric petty-metric"><div class="ml t-m-petty">备用金 / Petty Cash Balance</div><div class="mv mv-petty" id="m-petty">0</div></div>
+    <div class="metric"><div class="ml">支出 / Expense（AED）</div><div class="mv" id="m-total">0</div></div>
+    <div class="metric income-metric"><div class="ml">收入 / Income（AED）</div><div class="mv mv-income" id="m-income">0</div></div>
+    <div class="metric balance-metric"><div class="ml">结余 / Balance（AED）</div><div class="mv mv-balance" id="m-balance">0</div></div>
+    <div class="metric"><div class="ml">账单笔数 / Records</div><div class="mv" id="m-count">0</div></div>
+  </div>
+  <div class="metric petty-metric" style="margin:-0.5rem 0 1.25rem;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+      <div class="ml" style="margin:0;">备用金结余（累计）/ Petty Cash Balance (to date)</div>
+      <div style="font-size:12px;color:#888;">合计 / Total <span class="mv mv-petty" style="font-size:18px;" id="m-petty">0</span></div>
+    </div>
+    <div id="m-petty-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;"></div>
   </div>
 
   <div class="tabs">
@@ -267,7 +274,7 @@ input:checked+.slider:before{transform:translateX(18px);}
         <option value="汽车维修保养">汽车维修保养 / Car Maintenance</option><option value="停车费">停车费 / Parking</option><option value="固定开销">固定开销 / Fixed Cost</option><option value="手续费">手续费 / Fee</option><option value="餐费">餐费 / Dining</option><option value="高速费">高速费 / Toll</option><option value="罚款">罚款 / Fine</option><option value="Gas费">Gas费 / Gas</option><option value="工资">工资 / Salary</option><option value="维修费">维修费 / Repair</option>
       </select>
       <select id="fpay2" onchange="renderExpense()">
-        <option value="">全部 / All Payment</option><option>WIO</option><option>FAB</option><option>NBD</option><option value="现金">现金 / Cash</option><option>备用金 / Petty Cash</option>
+        <option value="">全部 / All Payment</option><option>WIO</option><option>FAB</option><option>NBD</option><option value="现金">现金 / Cash</option><option value="备用金">备用金 / Petty Cash</option>
       </select>
       <select id="fs2" onchange="renderExpense()"><option value="">全部 / All Status</option><option value="已确认">已确认 / Confirmed</option><option value="待确认">待确认 / Pending</option></select>
     </div>
@@ -404,7 +411,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div class="frow">
       <div class="fg"><label class="t-date">日期 / Date</label><input type="date" id="e-date"></div>
       <div class="fg"><label class="t-payment">支付方式 / Payment</label>
-        <select id="e-pay"><option>WIO</option><option>FAB</option><option>NBD</option><option value="现金">现金 / Cash</option><option>备用金 / Petty Cash</option></select>
+        <select id="e-pay"><option>WIO</option><option>FAB</option><option>NBD</option><option value="现金">现金 / Cash</option><option value="备用金">备用金 / Petty Cash</option></select>
       </div>
     </div>
     <div class="frow">
@@ -686,10 +693,12 @@ async function initApp(user){
   document.getElementById('exp-month').value=curMonth();
   await loadAll();
   startAutoRefresh();
-  // Default to current month on first load
-  const savedMonth=localStorage.getItem('selected_month')||curMonth();
+  // Always open on the current month
   const gsel=document.getElementById('global-month');
-  if(gsel){gsel.value=savedMonth;onGlobalMonthChange();}
+  if(gsel){
+    if(![...gsel.options].some(o=>o.value===curMonth()))gsel.insertAdjacentHTML('beforeend',`<option value="${curMonth()}">${curMonth()}</option>`);
+    gsel.value=curMonth();onGlobalMonthChange();
+  }
   applyLang();
   rebuildDropdowns();
 }
@@ -758,7 +767,8 @@ async function loadAll(){
     if(results[1].error)throw results[1].error;
     if(results[2].error)throw results[2].error;
 
-    expenses=results[0].data||[];
+    // Normalize payment labels saved by older versions (e.g. '备用金 / Petty Cash' → '备用金')
+    expenses=(results[0].data||[]).map(b=>({...b,payment:normPay(b.payment)}));
     incomes=results[1].data||[];
     pettyCash=results[2].data||[];
     if(isAdmin)users=results[3]?.data||[];
@@ -817,23 +827,35 @@ function onGlobalMonthChange(){
 
 function render(){renderMetrics();renderAll();renderExpense();renderIncome();renderPetty();renderSummary();renderExport();renderAdmin();syncSelects();}
 
+function fmtAED(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+
 function renderMetrics(){
-  const m=getGlobalMonth(); // empty string = all months, same as bill lists
-  const eFiltered=m?expenses.filter(b=>b.date&&b.date.startsWith(m)):expenses;
-  const iFiltered=m?incomes.filter(b=>b.date&&b.date.startsWith(m)):incomes;
+  // Income / expense / balance follow the month picker (defaults to current month)
+  const m=getGlobalMonth();
+  const inM=b=>!m||(b.date&&b.date.startsWith(m));
+  const eFiltered=expenses.filter(inM), iFiltered=incomes.filter(inM);
   const eT=eFiltered.reduce((s,b)=>s+toAED(b),0);
   const iT=iFiltered.reduce((s,b)=>s+parseFloat(b.amount||0),0);
-  const pcGiven=pettyCash.filter(b=>!m||(b.date&&b.date.startsWith(m))).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-  const pcUsed=eFiltered.filter(b=>b.payment==='备用金'||b.payment==='Petty Cash').reduce((s,b)=>s+toAED(b),0);
-  // Update label to show what period is shown
-  const label=m||'All';
-  document.querySelector('#m-total')?.closest('.metric')?.querySelector('.ml')&&
-    (document.querySelector('#m-total').closest('.metric').querySelector('.ml').textContent=
-      (lang==='zh'?'支出':'Expense')+`（AED）${m?'· '+m:''}`);
-  document.getElementById('m-total').textContent=eT.toFixed(2);
-  document.getElementById('m-income').textContent=iT.toFixed(2);
-  document.getElementById('m-balance').textContent=(iT-eT).toFixed(2);
-  document.getElementById('m-petty').textContent=(pcGiven-pcUsed).toFixed(2);
+  const period=m?(m===curMonth()?`本月 ${m}`:m):'全部 / All';
+  const setLabel=(id,txt)=>{const el=document.getElementById(id)?.closest('.metric')?.querySelector('.ml');if(el)el.textContent=txt;};
+  setLabel('m-total',`支出 / Expense · ${period}`);
+  setLabel('m-income',`收入 / Income · ${period}`);
+  setLabel('m-balance',`结余 / Balance · ${period}`);
+  document.getElementById('m-total').textContent=fmtAED(eT);
+  document.getElementById('m-income').textContent=fmtAED(iT);
+  const bal=iT-eT, mb=document.getElementById('m-balance');
+  mb.textContent=fmtAED(bal);mb.style.color=bal<0?'#cf1322':'#096dd9';
+  document.getElementById('m-count').textContent=eFiltered.length+iFiltered.length;
+
+  // Petty cash: cumulative per-person balance (not month-filtered), total = sum held by everyone
+  const isAdmin=currentUser?.role==='admin';
+  const holders=isAdmin?['刘承林','保姆','司机','杨文辉']:[currentUser?.name].filter(Boolean);
+  const rows=holders.map(n=>[n,getPettyBalance(n)]);
+  const total=rows.reduce((s,[,v])=>s+v,0);
+  document.getElementById('m-petty').textContent='AED '+fmtAED(total);
+  document.getElementById('m-petty-list').innerHTML=rows.map(([n,v])=>
+    `<div style="background:#fff;border:1px solid #ffe7ba;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
+      <span>${PETTY_NAMES[n]||n}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
 }
 
 function billHTML(b,type){
@@ -909,7 +931,7 @@ function renderPetty(){
     const bal=getPettyBalance(name);
     const received=pettyCash.filter(b=>b.receiver===name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
     const givenOut=pettyCash.filter(b=>b.giver===name&&b.receiver!==name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-    const spent=expenses.filter(b=>b.person===name&&(b.payment==='备用金'||b.payment==='Petty Cash')).reduce((s,b)=>s+toAED(b),0);
+    const spent=expenses.filter(b=>b.person===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);
     const[bg,tc]=gc(name);
     return`<div class="petty-card">
       <div class="name" style="display:flex;align-items:center;gap:6px;">
@@ -1325,13 +1347,20 @@ async function delIncome(id){
 }
 
 /* ── Petty Cash ── */
+function normPay(p){
+  if(!p)return p;
+  if(p.startsWith('备用金')||p==='Petty Cash')return '备用金';
+  if(p.startsWith('现金')||p==='Cash')return '现金';
+  return p;
+}
+function isPettyPay(p){return normPay(p)==='备用金';}
 function getPettyBalance(name){
   // Received from others
   const received=pettyCash.filter(b=>b.receiver===name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   // Given to others (transfers out)
   const given=pettyCash.filter(b=>b.giver===name&&b.receiver!==name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   // Spent via 备用金 payment
-  const spent=expenses.filter(b=>b.person===name&&(b.payment==='备用金'||b.payment==='Petty Cash')).reduce((s,b)=>s+toAED(b),0);
+  const spent=expenses.filter(b=>b.person===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);
   return received-given-spent;
 }
 
