@@ -1227,7 +1227,8 @@ function onCatChange(){
 }
 
 /* ── Expense CRUD ── */
-function openAdd(){
+async function openAdd(){
+  if(await updateIfNewer())return;
   editExpenseId=null;currentPhotosE=[];
   document.getElementById('expense-title').textContent=t('add-expense-title');
   document.getElementById('expense-save-btn').querySelector('span').textContent=t('save-expense');
@@ -1300,7 +1301,8 @@ async function delExpense(id){
 }
 
 /* ── Income CRUD ── */
-function openIncome(){
+async function openIncome(){
+  if(await updateIfNewer())return;
   editIncomeId=null;currentPhotosI=[];
   document.getElementById('income-title').textContent=t('add-income-title');
   document.getElementById('income-save-btn').querySelector('span').textContent=t('save-income');
@@ -1404,7 +1406,8 @@ function setPettySelects(mode){
   }
 }
 
-function openPettyReceive(){
+async function openPettyReceive(){
+  if(await updateIfNewer())return;
   editPettyId=null;pettyMode='receive';
   setPettySelects('receive');
   document.getElementById('petty-modal-title').textContent='登记收到备用金 / Record Petty Cash Received';
@@ -1417,7 +1420,8 @@ function openPettyReceive(){
   document.getElementById('modal-petty').classList.add('open');
 }
 
-function openPetty(){
+async function openPetty(){
+  if(await updateIfNewer())return;
   editPettyId=null;pettyMode='give';
   setPettySelects('give');
   document.getElementById('petty-modal-title').textContent=lang==='zh'?'发放备用金 / Issue Petty Cash':'Issue Petty Cash';
@@ -1594,6 +1598,30 @@ function exportCSV(){
 }
 
 function copyText(){navigator.clipboard.writeText(document.getElementById('exp-pre').textContent).then(()=>alert(lang==='zh'?'✅ 已复制':'✅ Copied'));}
+
+// ── Version check: reload when a newer version has been deployed ──
+// Server already sends no-cache; this covers pages left open (e.g. phones) since before an update.
+let pageFingerprint=null;
+async function fetchFingerprint(){
+  const t=await fetch('/?_v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():null);
+  if(!t)return null;
+  let x=0;for(let i=0;i<t.length;i++)x=(x*31+t.charCodeAt(i))|0;
+  return x+':'+t.length;
+}
+async function updateIfNewer(){
+  try{
+    const fp=await fetchFingerprint();
+    if(!fp)return false;
+    if(pageFingerprint===null){pageFingerprint=fp;return false;}
+    if(fp!==pageFingerprint){location.reload();return true;}
+  }catch(e){}
+  return false;
+}
+// Baseline on load; re-check when the tab comes back to the foreground (only if no form is open)
+updateIfNewer();
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden&&!document.querySelector('.overlay.open'))updateIfNewer();
+});
 
 // Init
 lang=localStorage.getItem('lang')||'zh';
