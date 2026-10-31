@@ -745,7 +745,7 @@ async function loadAll(){
 
   try{
     // Run all queries in parallel
-    let eq=sb.from('expenses').select('id,merchant,amount,currency,person,category,date,status,payment,note,photos,created_by').order('date',{ascending:false});
+    let eq=sb.from('expenses').select('*').order('date',{ascending:false});
     if(!canAll)eq=eq.eq('person',currentUser.name);
 
     let iq=sb.from('incomes').select('*').order('date',{ascending:false});
@@ -879,12 +879,16 @@ function billHTML(b,type){
   const photos=(b.photos&&b.photos.length)?`<div class="bill-photos">${b.photos.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')" loading="lazy">`).join('')}</div>`:'';
   const edf=isInc?`editIncome('${b.id}')`:isPetty?`editPetty('${b.id}')`:(`editExpense('${b.id}')`);
   const dlf=isInc?`delIncome('${b.id}')`:isPetty?`delPetty('${b.id}')`:(`delExpense('${b.id}')`);
-  const editBtns=canEdit?`<div style="display:flex;gap:4px;"><button class="action-btn" onclick="${edf}">✏️</button><button class="action-btn" onclick="${dlf}">🗑️</button></div>`:'';
+  // Records synced from the fleet system are read-only here (edit them in the fleet system)
+  const isFleet=b.source==='fleet';
+  const fleetTag=isFleet?`<span style="font-size:11px;background:#e6fffb;color:#006d75;border:1px solid #87e8de;padding:0 6px;border-radius:99px;">🚗 车辆系统 / Fleet</span>`:'';
+  const editBtns=isFleet?`<div style="font-size:11px;color:#aaa;">车辆系统修改<br>Edit in Fleet</div>`
+    :canEdit?`<div style="display:flex;gap:4px;"><button class="action-btn" onclick="${edf}">✏️</button><button class="action-btn" onclick="${dlf}">🗑️</button></div>`:'';
   return`<div class="bill-item${isInc?' income-item':isPetty?' petty-item':''}">
     <div class="avatar" style="background:${bg};color:${tc};">${isInc?'💰':isPetty?'💵':ini(b.person)}</div>
     <div class="bill-info">
       <div class="bill-name">${name}</div>
-      <div class="bill-meta">${meta}</div>
+      <div class="bill-meta">${meta}${fleetTag}</div>
       ${b.note?`<span class="item-note">${b.note}</span>`:''}${photos}
     </div>
     <div class="bill-right"><div>${amtHTML}</div>${editBtns}</div>
