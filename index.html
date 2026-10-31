@@ -136,12 +136,12 @@ input:checked+.slider:before{transform:translateX(18px);}
 .frow-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
 .fg{display:flex;flex-direction:column;gap:5px;}
 .fg label{font-size:12px;color:#888;}
-.fg input,.fg select,.fg textarea{font-family:inherit;font-size:14px;border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px;background:#fff;color:#1a1a1a;outline:none;transition:border-color 0.15s;}
+.fg input,.fg select,.fg textarea{width:100%;min-width:0;font-family:inherit;font-size:14px;border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px;background:#fff;color:#1a1a1a;outline:none;transition:border-color 0.15s;}
 .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:#aaa;}
 .fg textarea{resize:vertical;}
 .amt-row{display:flex;gap:6px;}
 .amt-row select{width:110px;flex-shrink:0;}
-.amt-row input{flex:1;}
+.amt-row input{flex:1;min-width:0;}
 .actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;}
 .btn{padding:9px 20px;border-radius:9px;font-size:14px;cursor:pointer;font-family:inherit;font-weight:500;transition:opacity 0.15s;}
 .btn-p{background:#1a1a1a;color:#fff;border:none;}.btn-p:hover{opacity:0.8;}
@@ -160,6 +160,21 @@ input:checked+.slider:before{transform:translateX(18px);}
   .metric-grid{grid-template-columns:repeat(2,1fr);}
   .frow,.frow-3{grid-template-columns:1fr;}
   .tab{padding:8px 8px;font-size:12px;}
+}
+/* ── tidy-up ── */
+.hd-title{font-size:19px;white-space:nowrap;}
+.hd-right{flex-wrap:nowrap;}
+.user-badge{white-space:nowrap;}
+#fm0,#fm1,#fm2,#fm3,#sum-month{display:none;} /* month is chosen once at the top */
+.metric .ml{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bill-meta .tag,.bill-meta span{white-space:nowrap;}
+.petty-balance-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+.petty-card .balance{font-size:15px;}
+@media(max-width:600px){
+  .hd-sub{display:none;}
+  .metric{padding:12px;}
+  .mv{font-size:19px;}
+  #m-petty-list{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
 }
 </style>
 </head>
@@ -192,24 +207,17 @@ input:checked+.slider:before{transform:translateX(18px);}
 <div class="container">
   <div class="hd">
     <div>
-      <div class="hd-title">🏛️ <span class="t-app-title">官邸每月流水账 / Residence Ledger</span></div>
-      <div class="hd-sub t-app-sub">支出 · 收入 · 备用金 / Expense · Income · Petty Cash</div>
+      <div class="hd-title">🏛️ 官邸流水账</div>
+      <div class="hd-sub">Residence Ledger</div>
     </div>
     <div class="hd-right">
-      <button class="lang-btn" onclick="toggleLang()">EN / 中文</button>
       <button id="refresh-btn" class="lang-btn" onclick="refreshData()" title="刷新数据">🔄</button>
       <div class="user-badge">
         <span id="user-display"></span>
         <span class="admin-tag t-admin" id="admin-tag" style="display:none;">管理员 / Admin</span>
-        <button class="btn btn-s btn-sm t-logout" onclick="doLogout()">退出 / Logout</button>
+        <button class="btn btn-s btn-sm" onclick="doLogout()">退出</button>
       </div>
     </div>
-  </div>
-
-  <div class="api-bar">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-    <input type="password" id="api-key-input" placeholder="Anthropic API Key (sk-ant-...)" oninput="saveKey(this.value)">
-    <span class="api-status" id="api-status"><span class="dot dot-off"></span> <span class="t-api-status">未配置</span></span>
   </div>
 
   <div class="month-bar">
@@ -220,7 +228,7 @@ input:checked+.slider:before{transform:translateX(18px);}
 
   <div class="month-bar" style="gap:8px;">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" style="flex-shrink:0;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input type="text" id="global-search" placeholder="搜索金额、商家、备注 / Note... / Search amount, merchant, note..." oninput="onSearchChange()" style="flex:1;border:none;background:transparent;font-size:13px;outline:none;font-family:inherit;color:#1a1a1a;">
+    <input type="text" id="global-search" placeholder="搜索 金额 / 商家 / 备注 · Search" oninput="onSearchChange()" style="flex:1;border:none;background:transparent;font-size:13px;outline:none;font-family:inherit;color:#1a1a1a;">
     <button onclick="document.getElementById('global-search').value='';onSearchChange();" style="background:none;border:none;font-size:12px;color:#aaa;cursor:pointer;padding:0;flex-shrink:0;">✕</button>
   </div>
 
@@ -228,12 +236,12 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div class="metric"><div class="ml">支出 / Expense（AED）</div><div class="mv" id="m-total">0</div></div>
     <div class="metric income-metric"><div class="ml">收入 / Income（AED）</div><div class="mv mv-income" id="m-income">0</div></div>
     <div class="metric balance-metric"><div class="ml">结余 / Balance（AED）</div><div class="mv mv-balance" id="m-balance">0</div></div>
-    <div class="metric"><div class="ml">账单笔数 / Records</div><div class="mv" id="m-count">0</div></div>
+    <div class="metric"><div class="ml">笔数 Records</div><div class="mv" id="m-count">0</div></div>
   </div>
   <div class="metric petty-metric" style="margin:-0.5rem 0 1.25rem;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
-      <div class="ml" style="margin:0;">备用金结余（累计）/ Petty Cash Balance (to date)</div>
-      <div style="font-size:12px;color:#888;">合计 / Total <span class="mv mv-petty" style="font-size:18px;" id="m-petty">0</span></div>
+      <div class="ml" style="margin:0;">备用金结余 Petty Cash</div>
+      <div style="font-size:12px;color:#888;white-space:nowrap;">合计 <span class="mv mv-petty" style="font-size:17px;" id="m-petty">0</span></div>
     </div>
     <div id="m-petty-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;"></div>
   </div>
@@ -291,11 +299,10 @@ input:checked+.slider:before{transform:translateX(18px);}
   </div>
 
   <div id="tab-petty" class="sec">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <div style="font-size:14px;font-weight:500;" class="t-petty-title">备用金管理</div>
+    <div style="margin-bottom:14px;">
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-green" onclick="openPettyReceive()">＋ 收到备用金 / Received</button>
-        <button class="btn btn-amber" id="petty-add-btn" onclick="openPetty()" style="display:none;">＋ <span class="t-give-petty">发放备用金 / Issue Petty Cash</span></button>
+        <button class="btn btn-green" onclick="openPettyReceive()">＋ 收到备用金</button>
+        <button class="btn btn-amber" id="petty-add-btn" onclick="openPetty()" style="display:none;">＋ 发放备用金</button>
       </div>
     </div>
     <div class="petty-balance-grid" id="petty-balance"></div>
@@ -353,6 +360,12 @@ input:checked+.slider:before{transform:translateX(18px);}
   </div>
 
   <div id="tab-admin" class="sec">
+    <div style="font-size:12px;color:#888;margin:0 0 6px;">AI 识别小票的 API Key（仅本机保存）/ AI receipt key</div>
+  <div class="api-bar">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+    <input type="password" id="api-key-input" placeholder="Anthropic API Key (sk-ant-...)" oninput="saveKey(this.value)">
+    <span class="api-status" id="api-status"><span class="dot dot-off"></span> <span class="t-api-status">未配置</span></span>
+  </div>
     <div class="card">
       <div style="font-size:14px;font-weight:600;margin-bottom:4px;" class="t-perm-title">权限管理 / Permission</div>
       <div style="font-size:12px;color:#888;margin-bottom:16px;" class="t-perm-sub">设置成员查看权限 / Set member view permissions</div>
@@ -838,9 +851,9 @@ function renderMetrics(){
   const iT=iFiltered.reduce((s,b)=>s+parseFloat(b.amount||0),0);
   const period=m?(m===curMonth()?`本月 ${m}`:m):'全部 / All';
   const setLabel=(id,txt)=>{const el=document.getElementById(id)?.closest('.metric')?.querySelector('.ml');if(el)el.textContent=txt;};
-  setLabel('m-total',`支出 / Expense · ${period}`);
-  setLabel('m-income',`收入 / Income · ${period}`);
-  setLabel('m-balance',`结余 / Balance · ${period}`);
+  setLabel('m-total','支出 Expense');
+  setLabel('m-income','收入 Income');
+  setLabel('m-balance','结余 Balance');
   document.getElementById('m-total').textContent=fmtAED(eT);
   document.getElementById('m-income').textContent=fmtAED(iT);
   const bal=iT-eT, mb=document.getElementById('m-balance');
@@ -855,7 +868,7 @@ function renderMetrics(){
   document.getElementById('m-petty').textContent='AED '+fmtAED(total);
   document.getElementById('m-petty-list').innerHTML=rows.map(([n,v])=>
     `<div style="background:#fff;border:1px solid #ffe7ba;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
-      <span>${PETTY_NAMES[n]||n}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
+      <span>${n}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
 }
 
 function billHTML(b,type){
@@ -867,15 +880,15 @@ function billHTML(b,type){
   const isAdmin=currentUser?.role==='admin';
   const canEdit=isAdmin||(b.person===currentUser?.name)||(b.payee===currentUser?.name)||(b.receiver===currentUser?.name)||(b.created_by===currentUser?.name);
   let amtHTML;
-  if(isInc||isPetty) amtHTML=`<div class="bill-amt ${isInc?'amt-income':'amt-petty'}">AED ${aedAmt.toFixed(2)}</div>`;
-  else if(isCNY) amtHTML=`<div class="bill-amt">¥ ${parseFloat(b.amount||0).toFixed(2)}</div><div class="bill-amt-aed">≈ AED ${aedAmt.toFixed(2)}</div>`;
-  else amtHTML=`<div class="bill-amt">AED ${aedAmt.toFixed(2)}</div>`;
+  if(isInc||isPetty) amtHTML=`<div class="bill-amt ${isInc?'amt-income':'amt-petty'}">AED ${fmtAED(aedAmt)}</div>`;
+  else if(isCNY) amtHTML=`<div class="bill-amt">¥ ${fmtAED(parseFloat(b.amount||0))}</div><div class="bill-amt-aed">≈ AED ${fmtAED(aedAmt)}</div>`;
+  else amtHTML=`<div class="bill-amt">AED ${fmtAED(aedAmt)}</div>`;
   const statusLabel=b.status==='已确认'?t('status-confirmed'):b.status==='待确认'?t('status-pending'):b.status||'';
   const meta=isInc
     ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${b.payment||''}</span>`
     :isPetty
     ?`<span>${b.date||''}</span><span class="tag tag-备用金">${t('tab-petty')}</span>${b.created_by&&b.created_by===b.receiver&&b.created_by!==b.giver?`<span style="font-size:11px;color:#389e0d;">收款人登记 / Recorded by receiver</span>`:''}`
-    :`<span class="sdot sdot-${b.status}"></span><span>${b.person||''}</span><span>·</span><span>${b.date||''}</span><span>·</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span>·</span><span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>`;
+    :`<span class="sdot sdot-${b.status}"></span><span>${b.person||''}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>`;
   const photos=(b.photos&&b.photos.length)?`<div class="bill-photos">${b.photos.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')" loading="lazy">`).join('')}</div>`:'';
   const edf=isInc?`editIncome('${b.id}')`:isPetty?`editPetty('${b.id}')`:(`editExpense('${b.id}')`);
   const dlf=isInc?`delIncome('${b.id}')`:isPetty?`delPetty('${b.id}')`:(`delExpense('${b.id}')`);
@@ -941,10 +954,10 @@ function renderPetty(){
       <div class="name" style="display:flex;align-items:center;gap:6px;">
         <span style="width:24px;height:24px;border-radius:50%;background:${bg};color:${tc};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${ini(name)}</span>${name}
       </div>
-      <div class="row"><span>已收</span><span>AED ${received.toFixed(2)}</span></div>
-      ${givenOut>0?`<div class="row"><span>已转出 / Transferred Out</span><span>AED ${givenOut.toFixed(2)}</span></div>`:''}
-      <div class="row"><span>${t('used')}</span><span>AED ${spent.toFixed(2)}</span></div>
-      <div class="balance ${bal>0?'balance-pos':bal<0?'balance-neg':'balance-zero'}">${t('balance')}: AED ${bal.toFixed(2)}</div>
+      <div class="row"><span>已收 / In</span><span>${fmtAED(received)}</span></div>
+      ${givenOut>0?`<div class="row"><span>转出 / Out</span><span>${fmtAED(givenOut)}</span></div>`:''}
+      <div class="row"><span>${t('used')}</span><span>${fmtAED(spent)}</span></div>
+      <div class="balance ${bal>0?'balance-pos':bal<0?'balance-neg':'balance-zero'}">余额 ${fmtAED(bal)}</div>
     </div>`;
   }).join('');
 
