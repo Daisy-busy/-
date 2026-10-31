@@ -386,11 +386,19 @@ input:checked+.slider:before{transform:translateX(18px);}
         </select>
       </div>
       <div class="fg"><label class="t-category">类型 / Category</label>
-        <select id="e-cat">
+        <select id="e-cat" onchange="onCatChange()">
           <option value="买菜">买菜 / Groceries</option><option value="官邸日常用品">官邸日常用品 / Household</option><option value="亚马逊采购">亚马逊采购 / Amazon</option>
           <option value="家乐福采购">家乐福采购 / Carrefour</option><option value="国内采购">国内采购 / China Purchase</option><option value="汽车加油">汽车加油 / Fuel</option>
           <option value="汽车维修保养">汽车维修保养 / Car Maintenance</option><option value="停车费">停车费 / Parking</option><option value="固定开销">固定开销 / Fixed Cost</option><option value="手续费">手续费 / Fee</option><option value="餐费">餐费 / Dining</option><option value="高速费">高速费 / Toll</option><option value="罚款">罚款 / Fine</option><option value="Gas费">Gas费 / Gas</option><option value="工资">工资 / Salary</option><option value="维修费">维修费 / Repair</option>
         </select>
+      </div>
+    </div>
+    <div id="salary-box" style="display:none;background:#e6f4ff;border:1px solid #91caff;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:13px;font-weight:600;color:#003a8c;margin-bottom:8px;">工资明细 / Payroll</div>
+      <div id="salary-rows"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-s btn-sm" onclick="addSalaryRow('',0,true)">＋ 添加人员 / Add person</button>
+        <span style="font-size:14px;font-weight:600;color:#003a8c;">合计 / Total：AED <span id="salary-total">0.00</span></span>
       </div>
     </div>
     <div class="frow">
@@ -1108,7 +1116,7 @@ async function recognizeWithAI(dataUrl,type,mode){
       if(p.amount)document.getElementById('e-amount').value=p.amount;
       if(p.currency&&['AED','CNY'].includes(p.currency))document.getElementById('e-currency').value=p.currency;
       if(p.date)document.getElementById('e-date').value=p.date;
-      if(p.category)document.getElementById('e-cat').value=p.category;
+      if(p.category){document.getElementById('e-cat').value=p.category;onCatChange();}
       if(p.note)document.getElementById('e-note').value=p.note;
       onAmountChange();
       txt.innerHTML=p.merchant||p.amount?`✅ ${p.merchant||'-'} · ${p.currency||'AED'} ${p.amount||'-'} · ${p.category||'-'}`:'⚠️ '+(lang==='zh'?'未识别到，请手动填写':'Not recognized, please fill manually');
@@ -1123,6 +1131,75 @@ async function recognizeWithAI(dataUrl,type,mode){
   }catch(e){document.getElementById(txtId).innerHTML='❌ '+(e.message||'Error');}
 }
 
+/* ── Payroll (工资) ── */
+const SALARY_DEFAULT=[['Anna',2500],['Dora',2000],['Mayat',3000],['Ali',3800],['曹立强',3300],['园丁',200]];
+const PAYROLL_TAG='工资明细 / Payroll: ';
+
+function parsePayroll(note){
+  const line=(note||'').split('\n').find(l=>l.startsWith(PAYROLL_TAG));
+  if(!line)return null;
+  return line.slice(PAYROLL_TAG.length).split(';').map(s=>s.trim()).filter(Boolean).map(s=>{
+    const m=s.match(/^(.*?)\s+([\d.]+)$/);
+    return m?[m[1].trim(),parseFloat(m[2])]:[s,0];
+  });
+}
+
+// Template = breakdown of the most recent 工资 record (so added people carry over), else defaults
+function salaryTemplate(){
+  const last=[...expenses].filter(b=>b.category==='工资'&&parsePayroll(b.note))
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.created_at||'').localeCompare(a.created_at||''))[0];
+  return last?parsePayroll(last.note):SALARY_DEFAULT;
+}
+
+function addSalaryRow(name,amount,focus){
+  const wrap=document.getElementById('salary-rows');
+  const row=document.createElement('div');
+  row.className='salary-row';
+  row.style.cssText='display:flex;gap:6px;margin-bottom:6px;align-items:center;';
+  row.innerHTML=`<input type="text" class="sal-name" placeholder="姓名 / Name" style="flex:1;min-width:0;font-family:inherit;font-size:14px;border:1px solid #d9d9d9;border-radius:8px;padding:6px 8px;">
+    <input type="number" class="sal-amt" step="0.01" min="0" placeholder="0" style="width:110px;font-family:inherit;font-size:14px;border:1px solid #d9d9d9;border-radius:8px;padding:6px 8px;">
+    <button type="button" title="删除 / Remove" style="background:none;border:none;cursor:pointer;color:#999;font-size:18px;">×</button>`;
+  row.querySelector('.sal-name').value=name||'';
+  row.querySelector('.sal-amt').value=amount||'';
+  row.querySelector('.sal-amt').addEventListener('input',recalcSalary);
+  row.querySelector('button').addEventListener('click',()=>{row.remove();recalcSalary();});
+  wrap.appendChild(row);
+  if(focus)row.querySelector('.sal-name').focus();
+  recalcSalary();
+}
+
+function getSalaryRows(){
+  return [...document.querySelectorAll('#salary-rows .salary-row')].map(r=>[
+    r.querySelector('.sal-name').value.trim(),parseFloat(r.querySelector('.sal-amt').value||0)
+  ]).filter(([n,a])=>n||a);
+}
+
+function recalcSalary(){
+  const total=getSalaryRows().reduce((s,[,a])=>s+a,0);
+  document.getElementById('salary-total').textContent=total.toFixed(2);
+  if(document.getElementById('e-cat').value==='工资'&&document.querySelectorAll('#salary-rows .salary-row').length){
+    document.getElementById('e-amount').value=total?+total.toFixed(2):'';
+    document.getElementById('e-currency').value='AED';
+    onAmountChange();
+  }
+}
+
+function fillSalaryRows(list){
+  document.getElementById('salary-rows').innerHTML='';
+  (list||[]).forEach(([n,a])=>addSalaryRow(n,a,false));
+  recalcSalary();
+}
+
+function onCatChange(){
+  const isSalary=document.getElementById('e-cat').value==='工资';
+  document.getElementById('salary-box').style.display=isSalary?'block':'none';
+  if(isSalary){
+    if(!document.querySelectorAll('#salary-rows .salary-row').length)fillSalaryRows(salaryTemplate());
+    const m=document.getElementById('e-merchant');
+    if(!m.value.trim())m.value=`${(document.getElementById('e-date').value||today()).slice(0,7)} 工资 / Salary`;
+  }
+}
+
 /* ── Expense CRUD ── */
 function openAdd(){
   editExpenseId=null;currentPhotosE=[];
@@ -1134,6 +1211,7 @@ function openAdd(){
   document.getElementById('conv-box').style.display='none';
   document.getElementById('e-date').value=today();document.getElementById('e-pay').value='WIO';
   document.getElementById('e-status').value='已确认';document.getElementById('ai-box-e').style.display='none';
+  document.getElementById('salary-rows').innerHTML='';onCatChange();
   renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');
   document.getElementById('modal-expense').classList.add('open');
 }
@@ -1149,6 +1227,14 @@ function editExpense(id){
   document.getElementById('e-date').value=b.date||'';document.getElementById('e-pay').value=b.payment||'WIO';
   document.getElementById('e-status').value=b.status||'已确认';document.getElementById('e-note').value=b.note||'';
   document.getElementById('ai-box-e').style.display='none';onAmountChange();
+  // Payroll: show saved breakdown; old salary records without one keep their amount untouched
+  document.getElementById('salary-rows').innerHTML='';
+  if(b.category==='工资'){
+    const pr=parsePayroll(b.note);
+    document.getElementById('salary-box').style.display='block';
+    if(pr)fillSalaryRows(pr);
+    document.getElementById('e-note').value=(b.note||'').split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)).join('\n');
+  }else document.getElementById('salary-box').style.display='none';
   renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');
   document.getElementById('modal-expense').classList.add('open');
 }
@@ -1156,10 +1242,17 @@ function editExpense(id){
 async function saveExpense(){
   const merchant=document.getElementById('e-merchant').value.trim(),amount=document.getElementById('e-amount').value,person=document.getElementById('e-person').value;
   if(!merchant||!amount||!person){alert(lang==='zh'?'请填写商家、金额和消费人':'Please fill merchant, amount and person');return;}
+  let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)).join('\n').trim();
+  const cat=document.getElementById('e-cat').value;
+  const sal=cat==='工资'?getSalaryRows().filter(([n])=>n):[];
+  if(sal.length){
+    const line=PAYROLL_TAG+sal.map(([n,a])=>`${n} ${+a.toFixed(2)}`).join('; ');
+    note=note?note+'\n'+line:line;
+  }
   const row={merchant,amount:parseFloat(amount),currency:document.getElementById('e-currency').value,person,
-    category:document.getElementById('e-cat').value,date:document.getElementById('e-date').value,
+    category:cat,date:document.getElementById('e-date').value,
     status:document.getElementById('e-status').value,payment:document.getElementById('e-pay').value,
-    note:document.getElementById('e-note').value.trim(),photos:currentPhotosE,created_by:currentUser.name};
+    note,photos:currentPhotosE,created_by:currentUser.name};
   if(editExpenseId){
     const{error}=await sb.from('expenses').update(row).eq('id',editExpenseId);
     if(error){alert('保存失败：'+error.message);return;}
