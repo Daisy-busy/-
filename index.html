@@ -176,6 +176,7 @@ input:checked+.slider:before{transform:translateX(18px);}
   .mv{font-size:19px;}
   #m-petty-list{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
 }
+.lang-btn{white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -207,15 +208,16 @@ input:checked+.slider:before{transform:translateX(18px);}
 <div class="container">
   <div class="hd">
     <div>
-      <div class="hd-title">🏛️ 官邸流水账</div>
+      <div class="hd-title">🏛️ <span class="t-app-short">官邸流水账</span></div>
       <div class="hd-sub">Residence Ledger</div>
     </div>
     <div class="hd-right">
+      <button class="lang-btn lang-toggle" onclick="toggleLang()">EN</button>
       <button id="refresh-btn" class="lang-btn" onclick="refreshData()" title="刷新数据">🔄</button>
       <div class="user-badge">
         <span id="user-display"></span>
         <span class="admin-tag t-admin" id="admin-tag" style="display:none;">管理员 / Admin</span>
-        <button class="btn btn-s btn-sm" onclick="doLogout()">退出</button>
+        <button class="btn btn-s btn-sm t-logout" onclick="doLogout()">退出</button>
       </div>
     </div>
   </div>
@@ -228,7 +230,7 @@ input:checked+.slider:before{transform:translateX(18px);}
 
   <div class="month-bar" style="gap:8px;">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" style="flex-shrink:0;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input type="text" id="global-search" placeholder="搜索 金额 / 商家 / 备注 · Search" oninput="onSearchChange()" style="flex:1;border:none;background:transparent;font-size:13px;outline:none;font-family:inherit;color:#1a1a1a;">
+    <input type="text" id="global-search" placeholder="搜索金额、商家、备注 / Search" oninput="onSearchChange()" style="flex:1;border:none;background:transparent;font-size:13px;outline:none;font-family:inherit;color:#1a1a1a;">
     <button onclick="document.getElementById('global-search').value='';onSearchChange();" style="background:none;border:none;font-size:12px;color:#aaa;cursor:pointer;padding:0;flex-shrink:0;">✕</button>
   </div>
 
@@ -236,12 +238,12 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div class="metric"><div class="ml">支出 / Expense（AED）</div><div class="mv" id="m-total">0</div></div>
     <div class="metric income-metric"><div class="ml">收入 / Income（AED）</div><div class="mv mv-income" id="m-income">0</div></div>
     <div class="metric balance-metric"><div class="ml">结余 / Balance（AED）</div><div class="mv mv-balance" id="m-balance">0</div></div>
-    <div class="metric"><div class="ml">笔数 Records</div><div class="mv" id="m-count">0</div></div>
+    <div class="metric"><div class="ml t-records">笔数 Records</div><div class="mv" id="m-count">0</div></div>
   </div>
   <div class="metric petty-metric" style="margin:-0.5rem 0 1.25rem;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
-      <div class="ml" style="margin:0;">备用金结余 Petty Cash</div>
-      <div style="font-size:12px;color:#888;white-space:nowrap;">合计 <span class="mv mv-petty" style="font-size:17px;" id="m-petty">0</span></div>
+      <div class="ml t-petty-sum" style="margin:0;">备用金结余 Petty Cash</div>
+      <div style="font-size:12px;color:#888;white-space:nowrap;"><span class="t-total">合计</span> <span class="mv mv-petty" style="font-size:17px;" id="m-petty">0</span></div>
     </div>
     <div id="m-petty-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;"></div>
   </div>
@@ -301,8 +303,8 @@ input:checked+.slider:before{transform:translateX(18px);}
   <div id="tab-petty" class="sec">
     <div style="margin-bottom:14px;">
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-green" onclick="openPettyReceive()">＋ 收到备用金</button>
-        <button class="btn btn-amber" id="petty-add-btn" onclick="openPetty()" style="display:none;">＋ 发放备用金</button>
+        <button class="btn btn-green" onclick="openPettyReceive()">＋ <span class="t-recv-petty">收到备用金</span></button>
+        <button class="btn btn-amber" id="petty-add-btn" onclick="openPetty()" style="display:none;">＋ <span class="t-give-petty-short">发放备用金</span></button>
       </div>
     </div>
     <div class="petty-balance-grid" id="petty-balance"></div>
@@ -389,7 +391,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     <input type="file" id="file-inp-e" accept="image/*" multiple style="display:none" onchange="handleFile(this,'expense')">
     <div class="ai-box" id="ai-box-e"><div class="ai-badge">✨ AI</div><div id="ai-text-e"></div></div>
     <div class="frow">
-      <div class="fg"><label class="t-merchant">商家 / Merchant *</label><input type="text" id="e-merchant" placeholder="例：家乐福"></div>
+      <div class="fg"><label class="t-merchant">商家 / Merchant *</label><input type="text" id="e-merchant" placeholder="例：家乐福 / e.g. Carrefour"></div>
       <div class="fg">
         <label class="t-amount">金额 / Amount *</label>
         <div class="amt-row">
@@ -536,13 +538,15 @@ const CNY_RATE=2;
 let expenses=[],incomes=[],pettyCash=[],users=[];
 let currentUser=null,editExpenseId=null,editIncomeId=null,pwdUserId=null;
 let apiKey='',currentPhotosE=[],currentPhotosI=[];
-let lang='zh';
+let lang=(()=>{try{return localStorage.getItem('lang')==='en'?'en':'zh'}catch(e){return 'zh'}})();
+function L(zh,en){return lang==='en'?en:zh;}
+function nm(n){const v=PETTY_NAMES[n];return lang==='en'&&v?v.split(' / ')[1]:n;}
 
 /* ── i18n ── */
 const T={
   zh:{
     'title':'官邸每月流水账 / Residence Ledger','sub':'支出 · 收入 · 备用金 / Expense · Income · Petty Cash',
-    'admin':'管理员 / Admin','logout':'退出','api-status-on':'已配置','api-status-off':'未配置',
+    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
     'month-filter':'📅 月份 / Month','clear':'清除 / Clear',
     'm-expense':'支出 / Expense（AED）','m-income':'收入 / Income（AED）','m-balance':'结余 / Balance（AED）','m-petty':'备用金 / Petty Cash Balance',
     'tab-bills':'全部','tab-expense':'支出','tab-income':'收入','tab-petty':'备用金','tab-summary':'汇总','tab-export':'导出','tab-admin':'权限',
@@ -567,7 +571,7 @@ const T={
   },
   en:{
     'title':'Residence Monthly Ledger','sub':'Expenses · Income · Petty Cash · AI · Real-time Sync',
-    'admin':'Admin','logout':'Logout','api-status-on':'Configured','api-status-off':'Not Set',
+    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
     'month-filter':'📅 Month','clear':'Clear',
     'm-expense':'Expense (AED)','m-income':'Income (AED)','m-balance':'Balance (AED)','m-petty':'Petty Cash Balance',
     'tab-bills':'All','tab-expense':'Expense','tab-income':'Income','tab-petty':'Petty Cash','tab-summary':'Summary','tab-export':'Export','tab-admin':'Admin',
@@ -593,13 +597,37 @@ const T={
 
 function t(key){return T[lang][key]||key;}
 
+const _orig=new WeakMap();const CJK=/[\u3400-\u9fff]/;
+function enHalf(s){const i=s.indexOf(' / ');if(i<0)return null;const a=s.slice(0,i),b=s.slice(i+3);return CJK.test(a)&&!CJK.test(b)&&b.trim()?a.match(/^\s*/)[0]+b:null;}
+function langWalk(root){
+  if(!root||root.nodeType!==1&&root.nodeType!==9)return;
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentElement&&n.parentElement.closest('script,style,textarea,.bill-name,.bill-note')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+  let n;while(n=w.nextNode()){
+    if(lang==='en'){const e=enHalf(n.nodeValue);if(e!==null){if(!_orig.has(n))_orig.set(n,n.nodeValue);n.nodeValue=e;}}
+    else if(_orig.has(n)){n.nodeValue=_orig.get(n);_orig.delete(n);}
+  }
+  (root.querySelectorAll?root.querySelectorAll('[placeholder]'):[]).forEach(el=>{
+    if(!el.dataset.ph)el.dataset.ph=el.placeholder;
+    const e=enHalf(el.dataset.ph);el.placeholder=lang==='en'&&e?e:el.dataset.ph;
+  });
+}
+let _langObs=null;
+function startLangObserver(){
+  if(_langObs)return;
+  _langObs=new MutationObserver(ms=>{if(lang!=='en')return;ms.forEach(m=>m.addedNodes.forEach(x=>{if(x.nodeType===1)langWalk(x);else if(x.nodeType===3&&x.parentElement)langWalk(x.parentElement);}));});
+  _langObs.observe(document.body,{childList:true,subtree:true});
+}
 function applyLang(){
+  document.documentElement.lang=lang==='en'?'en':'zh-CN';
+  document.querySelectorAll('.lang-toggle').forEach(b=>b.textContent=lang==='en'?'中文':'EN');
   document.querySelectorAll('[class*="t-"]').forEach(el=>{
     const cls=[...el.classList].find(c=>c.startsWith('t-'));
     if(!cls)return;
     const key=cls.slice(2);
     if(T[lang][key])el.textContent=T[lang][key];
   });
+  langWalk(document.body);startLangObserver();
+  if(currentUser){const ud=document.getElementById('user-display');if(ud)ud.textContent=nm(currentUser.name);}
   updateKeyStatus();
 }
 
@@ -667,7 +695,7 @@ function rebuildDropdowns(){
 
 function toggleLang(){
   lang=lang==='zh'?'en':'zh';
-  localStorage.setItem('lang',lang);
+  try{localStorage.setItem('lang',lang);}catch(e){}
   applyLang();
   rebuildDropdowns();
   render();
@@ -698,7 +726,7 @@ async function initApp(user){
   currentUser=user;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('main-app').style.display='block';
-  document.getElementById('user-display').textContent=currentUser.name;
+  document.getElementById('user-display').textContent=nm(currentUser.name);
   if(currentUser.role==='admin'){
     document.getElementById('admin-tag').style.display='inline';
     document.getElementById('admin-tab').style.display='inline-block';
@@ -856,9 +884,9 @@ function renderMetrics(){
   const iT=iFiltered.reduce((s,b)=>s+parseFloat(b.amount||0),0);
   const period=m?(m===curMonth()?`本月 ${m}`:m):'全部 / All';
   const setLabel=(id,txt)=>{const el=document.getElementById(id)?.closest('.metric')?.querySelector('.ml');if(el)el.textContent=txt;};
-  setLabel('m-total','支出 Expense');
-  setLabel('m-income','收入 Income');
-  setLabel('m-balance','结余 Balance');
+  setLabel('m-total',L('支出 Expense','Expense'));
+  setLabel('m-income',L('收入 Income','Income'));
+  setLabel('m-balance',L('结余 Balance','Balance'));
   document.getElementById('m-total').textContent=fmtAED(eT);
   document.getElementById('m-income').textContent=fmtAED(iT);
   const bal=iT-eT, mb=document.getElementById('m-balance');
@@ -873,13 +901,13 @@ function renderMetrics(){
   document.getElementById('m-petty').textContent='AED '+fmtAED(total);
   document.getElementById('m-petty-list').innerHTML=rows.map(([n,v])=>
     `<div style="background:#fff;border:1px solid #ffe7ba;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
-      <span>${n}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
+      <span>${nm(n)}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
 }
 
 function billHTML(b,type){
   const isInc=type==='income',isPetty=type==='petty';
   const[bg,tc]=isInc?['#f6ffed','#237804']:isPetty?['#fffbe6','#874d00']:gc(b.person);
-  const name=isInc?`${b.payer||''} → ${b.payee||''}`:isPetty?`${b.giver==='司机'?driverLabel(b):(b.giver||'')} → ${b.receiver==='司机'?driverLabel(b):(b.receiver||'')}`:b.merchant||'?';
+  const name=isInc?`${b.payer||''} → ${b.payee||''}`:isPetty?`${b.giver==='司机'?driverLabel(b):nm(b.giver||'')} → ${b.receiver==='司机'?driverLabel(b):nm(b.receiver||'')}`:b.merchant||'?';
   const isCNY=!isInc&&!isPetty&&b.currency==='CNY';
   const aedAmt=isInc||isPetty?parseFloat(b.amount||0):toAED(b);
   const isAdmin=currentUser?.role==='admin';
@@ -893,7 +921,7 @@ function billHTML(b,type){
     ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${b.payment||''}</span>`
     :isPetty
     ?`<span>${b.date||''}</span><span class="tag tag-备用金">${t('tab-petty')}</span>${b.created_by&&b.created_by===b.receiver&&b.created_by!==b.giver?`<span style="font-size:11px;color:#389e0d;">收款人登记 / Recorded by receiver</span>`:''}`
-    :`<span class="sdot sdot-${b.status}"></span><span>${b.person||''}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>`;
+    :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>`;
   const photos=(b.photos&&b.photos.length)?`<div class="bill-photos">${b.photos.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')" loading="lazy">`).join('')}</div>`:'';
   const edf=isInc?`editIncome('${b.id}')`:isPetty?`editPetty('${b.id}')`:(`editExpense('${b.id}')`);
   const dlf=isInc?`delIncome('${b.id}')`:isPetty?`delPetty('${b.id}')`:(`delExpense('${b.id}')`);
@@ -957,12 +985,12 @@ function renderPetty(){
     const[bg,tc]=gc(name);
     return`<div class="petty-card">
       <div class="name" style="display:flex;align-items:center;gap:6px;">
-        <span style="width:24px;height:24px;border-radius:50%;background:${bg};color:${tc};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${ini(name)}</span>${name}
+        <span style="width:24px;height:24px;border-radius:50%;background:${bg};color:${tc};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${ini(name)}</span>${nm(name)}
       </div>
       <div class="row"><span>已收 / In</span><span>${fmtAED(received)}</span></div>
       ${givenOut>0?`<div class="row"><span>转出 / Out</span><span>${fmtAED(givenOut)}</span></div>`:''}
       <div class="row"><span>${t('used')}</span><span>${fmtAED(spent)}</span></div>
-      <div class="balance ${bal>0?'balance-pos':bal<0?'balance-neg':'balance-zero'}">余额 ${fmtAED(bal)}</div>
+      <div class="balance ${bal>0?'balance-pos':bal<0?'balance-neg':'balance-zero'}">${L('余额','Balance')} ${fmtAED(bal)}</div>
       ${name==='司机'?driverBreakdownHTML():''}
     </div>`;
   }).join('');
@@ -1381,10 +1409,10 @@ function normPay(p){
 function isPettyPay(p){return normPay(p)==='备用金';}
 function driverBreakdownHTML(){
   const m={};const add=(k,v)=>{m[k]=(m[k]||0)+v;};
-  pettyCash.forEach(b=>{const a=parseFloat(b.amount||0),k=b.driver_name||'未指定';
+  pettyCash.forEach(b=>{const a=parseFloat(b.amount||0),k=b.driver_name||L('未指定','Unassigned');
     if(b.receiver==='司机'&&b.giver!=='司机')add(k,a);
     if(b.giver==='司机'&&b.receiver!=='司机')add(k,-a);});
-  expenses.forEach(b=>{if(b.person==='司机'&&isPettyPay(b.payment))add(b.driver_name||'未指定',-toAED(b));});
+  expenses.forEach(b=>{if(b.person==='司机'&&isPettyPay(b.payment))add(b.driver_name||L('未指定','Unassigned'),-toAED(b));});
   const rows=Object.entries(m).filter(([,v])=>Math.abs(v)>0.004);
   if(!rows.length)return'';
   return`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #eee;font-size:12px;">`+rows.map(([k,v])=>
@@ -1424,7 +1452,7 @@ function onPcDriverToggle(keepId){
   sel.innerHTML='<option value="">请选择司机 / Select driver</option>'+fleetDrivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
   if(cur!==null&&cur!==undefined&&cur!=='')sel.value=String(cur);
 }
-function driverLabel(b){return b.driver_name?`司机·${b.driver_name}`:'司机';}
+function driverLabel(b){return b.driver_name?`${nm('司机')}·${b.driver_name}`:nm('司机');}
 let pettyMode='give'; // 'give' = 发放, 'receive' = 收到登记
 const PETTY_NAMES={'徐慧':'徐慧 / Xu Hui','刘承林':'刘承林 / Liu Chenglin','保姆':'保姆 / Nanny','司机':'司机 / Driver','杨文辉':'杨文辉 / Yang Wenhui'};
 
