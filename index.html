@@ -184,6 +184,8 @@ input:checked+.slider:before{transform:translateX(18px);}
 .stmt-table th,.stmt-table td{white-space:nowrap;padding:8px 4px!important;text-align:right;}
 .stmt-table th:first-child,.stmt-table td:first-child{text-align:left;}
 @media(max-width:600px){.stmt-table{font-size:10.5px;letter-spacing:-.2px;}.stmt-table th,.stmt-table td{padding:7px 2px!important;}}
+.perm-table .btn{white-space:nowrap;}
+.perm-table td,.perm-table th{vertical-align:middle;}
 </style>
 </head>
 <body>
@@ -208,6 +210,23 @@ input:checked+.slider:before{transform:translateX(18px);}
       <input type="password" id="login-pass" placeholder="请输入密码 / Password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <button class="btn btn-p" style="width:100%;" onclick="doLogin()"><span class="t-login">登录</span></button>
+    <div style="text-align:center;margin-top:14px;font-size:13px;color:#888;">
+      没有账号？/ No account? <a href="javascript:void(0)" onclick="toggleRegister(true)" style="color:#1677ff;">注册 / Register</a>
+    </div>
+    <div id="reg-box" style="display:none;margin-top:16px;padding-top:16px;border-top:1px dashed #e5e5e5;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px;">注册新账号 / Register</div>
+      <div class="fg" style="margin-bottom:10px;"><label>姓名 / Name *</label><input type="text" id="reg-name" placeholder="例：曹立强"></div>
+      <div class="fg" style="margin-bottom:10px;"><label>英文名 / English name</label><input type="text" id="reg-en" placeholder="e.g. Cao Liqiang"></div>
+      <div class="fg" style="margin-bottom:10px;"><label>手机号 / Phone *</label><input type="tel" id="reg-phone" placeholder="05x xxx xxxx"></div>
+      <div class="fg" style="margin-bottom:10px;"><label>密码 / Password *（至少 4 位）</label><input type="password" id="reg-pass"></div>
+      <div class="fg" style="margin-bottom:14px;"><label>再输一次 / Confirm *</label><input type="password" id="reg-pass2"></div>
+      <div class="login-err" id="reg-msg" style="display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-s" style="flex:1;" onclick="toggleRegister(false)">取消 / Cancel</button>
+        <button class="btn btn-p" style="flex:2;" onclick="doRegister()">提交注册 / Submit</button>
+      </div>
+      <div style="font-size:12px;color:#888;margin-top:8px;">提交后需管理员审核通过才能登录 / An admin must approve before you can log in</div>
+    </div>
   </div>
 </div>
 
@@ -576,6 +595,67 @@ const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{global:{headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}},auth:{persistSession:false}});
 
 const PEOPLE=['刘承林','保姆','徐慧','司机','杨文辉'];
+let allUsers=[];
+/* People come from the users table: approved users become selectable everywhere */
+function applyPeople(list){
+  allUsers=list||[];
+  const act=allUsers.filter(u=>(u.status||'active')==='active');
+  act.forEach(u=>{
+    if(u.name!=='司机')PETTY_NAMES[u.name]=u.name_en?`${u.name} / ${u.name_en}`:u.name;
+    if(!PEOPLE.includes(u.name))PEOPLE.push(u.name);
+    if(!PERSON_ALIASES[u.name]&&u.name!=='司机'){
+      const al=[u.name.toLowerCase()];
+      if(u.name_en)al.push(u.name_en.toLowerCase());
+      if(/^[\u4e00-\u9fff]{3}$/.test(u.name))al.push(u.name.slice(1));   // given name, e.g. 立强
+      PERSON_ALIASES[u.name]=al;
+    }
+  });
+  const holders=act.filter(u=>u.role!=='admin'&&u.name!=='司机'&&!DISABLED_LOGINS.includes(u.name)).map(u=>u.name);
+  PETTY_HOLDERS.length=0;holders.forEach(n=>PETTY_HOLDERS.push(n));
+  buildPeopleSelects();
+}
+function personOpts(list){return list.map(n=>`<option value="${n}">${PETTY_NAMES[n]||n}</option>`).join('');}
+function buildPeopleSelects(){
+  const act=allUsers.filter(u=>(u.status||'active')==='active').map(u=>u.name);
+  const ln=document.getElementById('login-name');
+  if(ln&&act.length){const v=ln.value;ln.innerHTML='<option value="">请选择 / Select</option>'+personOpts(act.filter(n=>!DISABLED_LOGINS.includes(n)));ln.value=v;}
+  const ep=document.getElementById('e-person');
+  if(ep&&act.length){const v=ep.value;ep.innerHTML='<option value="">请选择 / Select</option>'+personOpts(act);ep.value=v;}
+  if(typeof applyLang==='function'&&document.body)try{langWalk(document.body);}catch(e){}
+}
+async function loadPeople(){
+  try{const{data,error}=await sb.from('users').select('id,name,name_en,status,role,phone,created_at').order('created_at');if(!error&&data)applyPeople(data);}catch(e){}
+}
+function toggleRegister(show){document.getElementById('reg-box').style.display=show?'block':'none';document.getElementById('reg-msg').style.display='none';}
+async function doRegister(){
+  const v=id=>document.getElementById(id).value.trim();
+  const name=v('reg-name'),en=v('reg-en'),phone=v('reg-phone').replace(/[^\d+]/g,''),p1=document.getElementById('reg-pass').value,p2=document.getElementById('reg-pass2').value;
+  const msg=(t,ok)=>{const el=document.getElementById('reg-msg');el.textContent=t;el.style.display='block';el.style.color=ok?'#389e0d':'';el.style.background=ok?'#f6ffed':'';};
+  if(!name||!phone||!p1)return msg('请填写姓名、手机号和密码 / Name, phone and password are required');
+  if(phone.replace(/\D/g,'').length<7)return msg('手机号不正确 / Invalid phone number');
+  if(p1.length<4)return msg('密码至少 4 位 / Password must be at least 4 characters');
+  if(p1!==p2)return msg('两次密码不一致 / Passwords do not match');
+  const{data:ex}=await sb.from('users').select('name,status').eq('name',name);
+  if(ex&&ex.length)return msg(ex[0].status==='pending'?'这个名字已提交注册，等待管理员审核 / Already submitted, waiting for approval':'这个名字已经有账号了 / This name already has an account');
+  const{error}=await sb.from('users').insert({name,name_en:en||null,phone,password:p1,role:'member',can_view_all:false,status:'pending'});
+  if(error)return msg('注册失败 / Failed: '+error.message);
+  ['reg-name','reg-en','reg-phone','reg-pass','reg-pass2'].forEach(id=>document.getElementById(id).value='');
+  msg('✅ 已提交，等管理员审核通过后就能登录 / Submitted — you can log in once an admin approves',true);
+}
+async function approveUser(id,ok){
+  const u=users.find(x=>x.id===id);if(!u)return;
+  if(!ok&&!confirm(`拒绝 ${u.name} 的注册？/ Reject this registration?`))return;
+  const{error}=await sb.from('users').update({status:ok?'active':'rejected'}).eq('id',id);
+  if(error){alert('操作失败：'+error.message);return;}
+  u.status=ok?'active':'rejected';
+  await loadPeople();renderAdmin();updatePendingBadge();render();
+}
+function updatePendingBadge(){
+  const n=users.filter(u=>u.status==='pending').length;
+  const t=document.getElementById('admin-tab');if(!t)return;
+  let b=t.querySelector('.pend');if(!b){b=document.createElement('span');b.className='pend';b.style.cssText='background:#ff4d4f;color:#fff;border-radius:99px;font-size:11px;padding:0 6px;margin-left:4px;';t.appendChild(b);}
+  b.textContent=n;b.style.display=n?'inline':'none';
+}
 const COLORS=[['#ede9fe','#4c1d95'],['#d1fae5','#064e3b'],['#dbeafe','#1e3a8a'],['#fef3c7','#78350f'],['#fce7f3','#831843']];
 const CNY_RATE=2;
 let expenses=[],incomes=[],pettyCash=[],users=[];
@@ -747,7 +827,7 @@ function toggleLang(){
 }
 
 /* ── Auth ── */
-function gc(n){const i=PEOPLE.indexOf(n)%COLORS.length;return COLORS[i>=0?i:0];}
+function gc(n){const i=PEOPLE.indexOf(n);return COLORS[i>=0?i%COLORS.length:0];}
 function ini(n){return n?n.slice(0,2):'?';}
 function today(){return new Date().toISOString().split('T')[0];}
 function curMonth(){return new Date().toISOString().slice(0,7);}
@@ -762,6 +842,8 @@ async function doLogin(){
   if(error||!data||!data.length){showLoginErr(lang==='zh'?'无法连接数据库':'Cannot connect to database');return;}
   const user=data.find(u=>u.name===name&&u.password===pass);
   if(user&&DISABLED_LOGINS.includes(user.name)){showLoginErr('司机请使用用车系统记账 / Drivers please use the Fleet app');return;}
+  if(user&&user.status==='pending'){showLoginErr('账号还在等管理员审核 / Waiting for admin approval');return;}
+  if(user&&user.status==='rejected'){showLoginErr('注册未通过，请联系管理员 / Registration was not approved');return;}
   if(!user){showLoginErr(lang==='zh'?'用户名或密码错误':'Invalid name or password');return;}
   try{localStorage.setItem('current_user',JSON.stringify(user));}catch(e){}
   await initApp(user);
@@ -815,7 +897,7 @@ async function autoLogin(){
     const{data}=await sb.from('users').select('*');
     if(!data)return false;
     const fresh=data.find(u=>u.id===user.id&&u.password===user.password);
-    if(!fresh||DISABLED_LOGINS.includes(fresh.name)){try{localStorage.removeItem('current_user');}catch(e){}return false;}
+    if(!fresh||DISABLED_LOGINS.includes(fresh.name)||(fresh.status&&fresh.status!=='active')){try{localStorage.removeItem('current_user');}catch(e){}return false;}
     await initApp(fresh);
     return true;
   }catch(e){return false;}
@@ -864,7 +946,8 @@ async function loadAll(){
     expenses=(results[0].data||[]).map(b=>({...b,payment:normPay(b.payment)}));
     incomes=results[1].data||[];
     pettyCash=results[2].data||[];
-    if(isAdmin)users=results[3]?.data||[];
+    if(isAdmin){users=results[3]?.data||[];updatePendingBadge();}
+    await loadPeople();
     try{const o=await withTimeout(sb.from('ledger_settings').select('value').eq('key','opening'));if(!o.error&&o.data&&o.data[0])opening={...opening,...o.data[0].value};}catch(e){}
     try{const d=await withTimeout(sb.from('fleet_drivers').select('*').eq('active',true).order('id'));if(!d.error)fleetDrivers=d.data||[];}catch(e){}
 
@@ -945,7 +1028,7 @@ function renderMetrics(){
 
   // Petty cash: cumulative per-person balance (not month-filtered), total = sum held by everyone
   const isAdmin=currentUser?.role==='admin';
-  const holders=isAdmin?['刘承林','保姆','司机','杨文辉']:[currentUser?.name].filter(Boolean);
+  const holders=isAdmin?[...PETTY_HOLDERS,'司机']:[currentUser?.name].filter(Boolean);
   const rows=holders.map(n=>[n,getPettyBalance(n)]);
   const total=rows.reduce((s,[,v])=>s+v,0);
   document.getElementById('m-petty').textContent='AED '+fmtAED(total);
@@ -1043,7 +1126,7 @@ function renderPetty(){
   const isAdmin=currentUser.role==='admin';
 
   // Balance cards - admin sees all members, member sees only self
-  const members=isAdmin?['刘承林','保姆','司机','杨文辉']:[currentUser.name];
+  const members=isAdmin?[...PETTY_HOLDERS,'司机']:[currentUser.name];
   const grid=document.getElementById('petty-balance');
   grid.innerHTML=members.map(name=>{
     const bal=getPettyBalance(name);
@@ -1112,8 +1195,12 @@ function renderSummary(){
 function renderAdmin(){
   if(!currentUser||currentUser.role!=='admin')return;
   const tb=document.getElementById('perm-body');
-  tb.innerHTML=users.map(u=>`<tr>
-    <td style="font-weight:500;">${u.name}</td>
+  const rank=u=>u.status==='pending'?0:1;
+  tb.innerHTML=users.filter(u=>u.status!=='rejected').sort((a,b)=>rank(a)-rank(b)).map(u=>u.status==='pending'?`<tr style="background:#fffbe6;">
+    <td style="font-weight:500;">${u.name}${u.name_en?` <span style="color:#888;font-weight:400;">${u.name_en}</span>`:''}<div style="font-size:11px;color:#888;">📱 ${u.phone||'-'} · ${L('待审核','Pending')}</div></td>
+    <td colspan="3" style="text-align:right;white-space:nowrap;"><button class="btn btn-s btn-sm" onclick="approveUser('${u.id}',false)">${L('拒绝','Reject')}</button> <button class="btn btn-p btn-sm" onclick="approveUser('${u.id}',true)">${L('通过','Approve')}</button></td>
+  </tr>`:`<tr>
+    <td style="font-weight:500;">${u.name}${u.phone?`<div style="font-size:11px;color:#888;font-weight:400;">📱 ${u.phone}</div>`:''}</td>
     <td><span style="font-size:12px;color:${u.role==='admin'?'#d46b08':'#888'};">${u.role==='admin'?(lang==='zh'?'管理员 / Admin':'Admin'):(lang==='zh'?'成员':'Member')}</span></td>
     <td>${u.role==='admin'?`<span style="font-size:12px;color:#aaa;">${lang==='zh'?'全部可见':'Full access'}</span>`:`<label class="toggle"><input type="checkbox" ${u.can_view_all?'checked':''} onchange="togglePerm('${u.id}',this.checked)"><span class="slider"></span></label>`}</td>
     <td><button class="btn btn-s btn-sm" onclick="openPwd('${u.id}','${u.name}')">${lang==='zh'?'改密码':'Change'}</button></td>
@@ -1944,7 +2031,7 @@ document.addEventListener('visibilitychange',()=>{
 // Init
 lang=localStorage.getItem('lang')||'zh';
 applyLang();
-autoLogin();
+loadPeople().finally(()=>autoLogin());
 </script>
 </body>
 </html>
