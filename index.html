@@ -1521,8 +1521,9 @@ async function saveExpense(){
       closeModals();
       await openPetty();
       const giver=PETTY_HOLDERS.includes(person)||person==='徐慧'?person:'徐慧';
-      document.getElementById('pc-giver').value=giver;
-      document.getElementById('pc-receiver').value=to.person;
+      setPc('pc-giver',giver,null);
+      if(to.person==='司机'&&(to.driverId===''||to.driverId==null))document.getElementById('pc-receiver').value='';
+      else setPc('pc-receiver',to.person,to.driverId);
       if((giver==='徐慧'||to.person==='徐慧')&&ACCOUNTS.includes(normPay(pay)))document.getElementById('pc-account').value=normPay(pay);
       onPcGiverChange();onPcDriverToggle(to.driverId??'');
       document.getElementById('pc-amount').value=+amt.toFixed(2);
@@ -1640,12 +1641,12 @@ function getPettyBalance(name){
 }
 
 function onPcGiverChange(){
-  const giver=document.getElementById('pc-giver').value;
+  const g=getPc('pc-giver'),giver=g.person;
   const hint=document.getElementById('pc-balance-hint');
   if(!giver||giver==='徐慧'||pettyMode==='receive'){hint.style.display='none';return;}
-  const bal=getPettyBalance(giver);
+  const bal=g.driverId!=null?driverBalance(g.driverId):getPettyBalance(giver);
   hint.style.display='block';
-  hint.textContent=`${giver} 当前备用金 / Petty Cash Balance：AED ${bal.toFixed(2)}`;
+  hint.textContent=`${g.driverId!=null?drvLabel({name:driverNameById(g.driverId)}):giver} 当前备用金 / Petty Cash Balance：AED ${bal.toFixed(2)}`;
   hint.style.color=bal>0?'#d46b08':'#cf1322';
 }
 
@@ -1752,39 +1753,53 @@ async function saveOpening(){
   if(error){alert('保存失败 / Save failed：'+error.message);return;}
   opening=v;closeModals();render();
 }
-function driverInvolved(){return document.getElementById('pc-giver').value==='司机'||document.getElementById('pc-receiver').value==='司机';}
+function drvLabel(d){const cn=String(d.name||'').match(/[\u4e00-\u9fff]+/);return cn?cn[0]:d.name;}
+function pcOptions(exclude){
+  const ppl=Object.keys(PETTY_NAMES).filter(n=>n!=='司机'&&n!==exclude);
+  const drv=fleetDrivers.filter(d=>'drv:'+d.id!==exclude);
+  return ppl.map(n=>`<option value="${n}">${PETTY_NAMES[n]}</option>`).join('')+
+    (drv.length?`<optgroup label="${L('司机','Drivers')}">`+drv.map(d=>`<option value="drv:${d.id}">${drvLabel(d)}</option>`).join('')+'</optgroup>':'');
+}
+function getPc(id){const v=document.getElementById(id).value||'';return v.startsWith('drv:')?{person:'司机',driverId:parseInt(v.slice(4))}:{person:v,driverId:null};}
+function setPc(id,person,driverId){
+  const s=document.getElementById(id);let v=person||'';
+  if(person==='司机'){
+    if(driverId!=null&&driverId!==''){v='drv:'+driverId;if(![...s.options].some(o=>o.value===v))s.insertAdjacentHTML('beforeend',`<option value="${v}">${driverNameById(driverId)||'#'+driverId}</option>`);}
+    else{v='司机';if(![...s.options].some(o=>o.value===v))s.insertAdjacentHTML('beforeend',`<option value="司机">${L('司机（未指定）','Driver (unassigned)')}</option>`);}
+  }
+  s.value=v;
+}
+function meVal(){return myDriverId()!=null?'drv:'+myDriverId():currentUser.name;}
+function driverBalance(id){
+  const isD=b=>String(b.driver_id)===String(id);
+  return (parseFloat((opening.drivers||{})[id])||0)
+    +sumAmt(pettyCash.filter(b=>afterStart(b)&&isD(b)&&b.receiver==='司机'&&b.giver!=='司机'))
+    -sumAmt(pettyCash.filter(b=>afterStart(b)&&isD(b)&&b.giver==='司机'&&b.receiver!=='司机'))
+    -sumAmt(expenses.filter(b=>afterStart(b)&&isD(b)&&b.person==='司机'&&isPettyPay(b.payment)),toAED);
+}
 function onPcDriverToggle(keepId){
   const xh=document.getElementById('pc-giver').value==='徐慧'||document.getElementById('pc-receiver').value==='徐慧';
   document.getElementById('pc-account-box').style.display=xh?'block':'none';
-  const box=document.getElementById('pc-driver-box'),sel=document.getElementById('pc-driver');
-  const show=driverInvolved();box.style.display=show?'block':'none';
-  if(!show)return;
-  const cur=keepId!==undefined?keepId:sel.value;
-  sel.innerHTML='<option value="">请选择司机 / Select driver</option>'+fleetDrivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
-  if(cur!==null&&cur!==undefined&&cur!=='')sel.value=String(cur);
-  sel.disabled=false;
-  if(myDriverId()!=null&&(document.getElementById('pc-giver').value==='司机'||document.getElementById('pc-receiver').value==='司机')){sel.value=String(myDriverId());sel.disabled=true;}
+  document.getElementById('pc-driver-box').style.display='none';
 }
 function driverLabel(b){return b.driver_name?`${nm('司机')}·${b.driver_name}`:nm('司机');}
 let pettyMode='give'; // 'give' = 发放, 'receive' = 收到登记
 const PETTY_NAMES={'徐慧':'徐慧 / Xu Hui','刘承林':'刘承林 / Liu Chenglin','保姆':'保姆 / Nanny','司机':'司机 / Driver','杨文辉':'杨文辉 / Yang Wenhui'};
 
 function setPettySelects(mode){
-  const me=currentUser.name;
+  const me=meVal();
   const giverSel=document.getElementById('pc-giver');
   const recvSel=document.getElementById('pc-receiver');
-  const all=Object.keys(PETTY_NAMES);
+  const sel0='<option value="">请选择 / Select</option>';
   if(mode==='receive'){
     // Receiver is me (locked); giver is anyone else
-    recvSel.innerHTML=`<option value="${me}">${PETTY_NAMES[me]||me}</option>`;
+    recvSel.innerHTML=`<option value="${me}">${myDriverId()!=null?userLabel(currentUser):(PETTY_NAMES[me]||me)}</option>`;
     recvSel.value=me;recvSel.disabled=true;
-    giverSel.innerHTML='<option value="">请选择 / Select</option>'+all.filter(n=>n!==me).map(n=>`<option value="${n}">${PETTY_NAMES[n]}</option>`).join('');
-    giverSel.disabled=false;
+    giverSel.innerHTML=sel0+pcOptions(me);giverSel.disabled=false;
   }else{
-    recvSel.innerHTML='<option value="">请选择 / Select</option>'+all.map(n=>`<option value="${n}">${n==='徐慧'?PETTY_NAMES[n]+'（退还 / Return）':PETTY_NAMES[n]}</option>`).join('');
+    recvSel.innerHTML=sel0+pcOptions(currentUser.role==='admin'?'':me).replace('<option value="徐慧">徐慧 / Xu Hui</option>','<option value="徐慧">徐慧 / Xu Hui（退还 / Return）</option>');
     recvSel.disabled=false;
-    giverSel.innerHTML='<option value="">请选择 / Select</option>'+all.map(n=>`<option value="${n}">${PETTY_NAMES[n]}</option>`).join('');
-    giverSel.disabled=false;
+    giverSel.innerHTML=sel0+pcOptions('');giverSel.disabled=false;
   }
 }
 
@@ -1810,9 +1825,8 @@ async function openPetty(){
   setPettySelects('give');
   document.getElementById('petty-modal-title').textContent=lang==='zh'?'发放备用金 / Issue Petty Cash':'Issue Petty Cash';
   document.getElementById('petty-save-btn').querySelector('span').textContent=lang==='zh'?'确认 / Confirm':'Confirm';
-  document.getElementById('pc-giver').value=currentUser.name;
-  // nanny mostly hands petty cash to drivers → default receiver 司机
-  document.getElementById('pc-receiver').value=currentUser.name==='保姆'?'司机':'';
+  document.getElementById('pc-giver').value=meVal();
+  document.getElementById('pc-receiver').value='';
   document.getElementById('pc-amount').value='';
   document.getElementById('pc-date').value=today();
   document.getElementById('pc-note').value='';
@@ -1826,12 +1840,12 @@ function editPetty(id){
   const b=pettyCash.find(x=>x.id===id);if(!b)return;
   editPettyId=id;
   // Receiver editing their own receipt record → receive mode; otherwise give mode
-  pettyMode=(b.receiver===currentUser.name&&b.created_by===currentUser.name&&currentUser.role!=='admin')?'receive':'give';
+  pettyMode=(b.receiver===currentUser.name&&b.created_by===currentUser.name&&currentUser.role!=='admin'&&(myDriverId()==null||String(b.driver_id)===String(myDriverId())))?'receive':'give';
   setPettySelects(pettyMode);
   document.getElementById('petty-modal-title').textContent='编辑备用金 / Edit Petty Cash';
   document.getElementById('petty-save-btn').querySelector('span').textContent=lang==='zh'?'保存修改':'Save';
-  document.getElementById('pc-giver').value=b.giver||currentUser.name;
-  document.getElementById('pc-receiver').value=b.receiver||'';
+  setPc('pc-giver',b.giver||currentUser.name,b.giver==='司机'?b.driver_id:null);
+  if(pettyMode!=='receive')setPc('pc-receiver',b.receiver||'',b.receiver==='司机'?b.driver_id:null);
   document.getElementById('pc-amount').value=b.amount||'';
   document.getElementById('pc-date').value=b.date||'';
   document.getElementById('pc-note').value=b.note||'';
@@ -1841,25 +1855,24 @@ function editPetty(id){
 }
 
 async function savePetty(){
-  const giver=document.getElementById('pc-giver').value;
-  const receiver=document.getElementById('pc-receiver').value;
+  const G=getPc('pc-giver'),R=getPc('pc-receiver');
+  const giver=G.person,receiver=R.person;
   const amount=parseFloat(document.getElementById('pc-amount').value||0);
   if(!giver||!receiver||!amount){alert(lang==='zh'?'请填写发放人、收款人和金额':'Please fill all fields');return;}
-  if(giver===receiver){alert('发放人和收款人不能是同一人 / Giver and receiver cannot be the same');return;}
+  if(giver===receiver&&(giver!=='司机'||String(G.driverId)===String(R.driverId))){alert('发放人和收款人不能是同一人 / Giver and receiver cannot be the same');return;}
+  if(giver==='司机'&&receiver==='司机'){alert('司机之间转钱请分两笔：先退给发放人，再发给另一位司机 / Driver-to-driver: record as two transfers');return;}
   // Check giver's balance only when issuing (receiver self-reporting is not blocked)
   if(pettyMode==='give'&&giver!=='徐慧'&&!editPettyId){
-    const bal=getPettyBalance(giver);
+    const bal=G.driverId!=null?driverBalance(G.driverId):getPettyBalance(giver);
     if(amount>bal){
       alert(lang==='zh'?`余额 / Balance不足！${giver}当前备用金 / Petty Cash Balance AED ${bal.toFixed(2)}`:`Insufficient balance! ${giver} has AED ${bal.toFixed(2)}`);
       return;
     }
   }
   let driver_id=null,driver_name=null;
-  if(giver==='司机'||receiver==='司机'){
-    const v=document.getElementById('pc-driver').value;
-    if(!v){alert('请选择具体是哪位司机 / Please select the driver');return;}
-    const d=fleetDrivers.find(x=>String(x.id)===v);driver_id=parseInt(v);driver_name=d?d.name:null;
-  }
+  const did=giver==='司机'?G.driverId:receiver==='司机'?R.driverId:null;
+  if((giver==='司机'||receiver==='司机')&&did==null){alert('请选择具体是哪位司机 / Please select the driver');return;}
+  if(did!=null){driver_id=did;driver_name=driverNameById(did)||null;}
   const account=(giver==='徐慧'||receiver==='徐慧')?document.getElementById('pc-account').value:null;
   const row={giver,receiver,amount,driver_id,driver_name,account,
     date:document.getElementById('pc-date').value,
