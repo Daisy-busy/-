@@ -1414,6 +1414,26 @@ async function saveExpense(){
   if(!merchant||!amount||!person){alert(lang==='zh'?'请填写商家、金额和消费人':'Please fill merchant, amount and person');return;}
   let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)).join('\n').trim();
   const cat=document.getElementById('e-cat').value;
+  if(!editExpenseId&&cat!=='工资'&&person!=='司机'){
+    const drv=matchDriver(merchant+' '+note);
+    if(drv&&confirm(lang==='zh'
+      ?`这笔看起来是给司机${drv.name?'（'+drv.name+'）':''}的钱。\n给司机的钱属于备用金流转，不算支出。\n\n点「确定」改为发放备用金；点「取消」仍按支出保存。`
+      :`This looks like money for a driver${drv.name?' ('+drv.name+')':''}.\nMoney given to drivers is a petty-cash transfer, not an expense.\n\nOK = record as petty cash issue; Cancel = save as expense anyway.`)){
+      const amt=document.getElementById('e-currency').value==='CNY'?parseFloat(amount)/CNY_RATE:parseFloat(amount);
+      const pay=document.getElementById('e-pay').value,date=document.getElementById('e-date').value;
+      closeModals();
+      await openPetty();
+      const giver=PETTY_HOLDERS.includes(person)||person==='徐慧'?person:'徐慧';
+      document.getElementById('pc-giver').value=giver;
+      document.getElementById('pc-receiver').value='司机';
+      if(giver==='徐慧'&&ACCOUNTS.includes(normPay(pay)))document.getElementById('pc-account').value=normPay(pay);
+      onPcGiverChange();onPcDriverToggle(drv.id??'');
+      document.getElementById('pc-amount').value=+amt.toFixed(2);
+      document.getElementById('pc-date').value=date||today();
+      document.getElementById('pc-note').value=merchant+(note?' '+note:'');
+      return;
+    }
+  }
   const sal=cat==='工资'?getSalaryRows().filter(([n])=>n):[];
   if(sal.length){
     const line=PAYROLL_TAG+sal.map(([n,a])=>`${n} ${+a.toFixed(2)}`).join('; ');
@@ -1536,6 +1556,17 @@ function onPcAmountChange(){
 }
 
 let fleetDrivers=[];
+/* Does this text look like money handed to a driver? Returns {id,name} (id/name may be empty) or null */
+function matchDriver(text){
+  const s=String(text||'').toLowerCase();if(!s.trim())return null;
+  for(const d of fleetDrivers){
+    const full=String(d.name||'').toLowerCase(),first=full.split(/[\s(（]/)[0];
+    const cn=(d.name||'').match(/[\u4e00-\u9fff]+/);
+    if((first.length>=3&&new RegExp('(^|[^a-z])'+first.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'($|[^a-z])').test(s))||(cn&&s.includes(cn[0])))return{id:d.id,name:d.name};
+  }
+  if(/司机|driver/.test(s))return{id:'',name:''};
+  return null;
+}
 const PETTY_HOLDERS=['刘承林','保姆','杨文辉'];
 const ACCOUNTS=['现金','WIO','FAB','NBD'];
 function openingAcc(a){const o=opening.accounts||{};if(!opening.accounts&&a==='现金')return parseFloat(opening.own)||0;return parseFloat(o[a])||0;}
@@ -1672,7 +1703,8 @@ async function openPetty(){
   document.getElementById('petty-modal-title').textContent=lang==='zh'?'发放备用金 / Issue Petty Cash':'Issue Petty Cash';
   document.getElementById('petty-save-btn').querySelector('span').textContent=lang==='zh'?'确认 / Confirm':'Confirm';
   document.getElementById('pc-giver').value=currentUser.name;
-  document.getElementById('pc-receiver').value='';
+  // nanny mostly hands petty cash to drivers → default receiver 司机
+  document.getElementById('pc-receiver').value=currentUser.name==='保姆'?'司机':'';
   document.getElementById('pc-amount').value='';
   document.getElementById('pc-date').value=today();
   document.getElementById('pc-note').value='';
