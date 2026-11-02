@@ -238,7 +238,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div class="metric"><div class="ml">支出 / Expense（AED）</div><div class="mv" id="m-total">0</div></div>
     <div class="metric income-metric"><div class="ml">收入 / Income（AED）</div><div class="mv mv-income" id="m-income">0</div></div>
     <div class="metric balance-metric"><div class="ml">结余 / Balance（AED）</div><div class="mv mv-balance" id="m-balance">0</div></div>
-    <div class="metric"><div class="ml t-records">笔数 Records</div><div class="mv" id="m-count">0</div></div>
+    <div class="metric"><div class="ml" id="m-funds-l">现有资金 Funds</div><div class="mv" id="m-funds">0</div><div style="font-size:11px;color:#888;margin-top:2px;" id="m-funds-sub"></div></div>
   </div>
   <div class="metric petty-metric" style="margin:-0.5rem 0 1.25rem;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
@@ -305,6 +305,7 @@ input:checked+.slider:before{transform:translateX(18px);}
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-green" onclick="openPettyReceive()">＋ <span class="t-recv-petty">收到备用金</span></button>
         <button class="btn btn-amber" id="petty-add-btn" onclick="openPetty()" style="display:none;">＋ <span class="t-give-petty-short">发放备用金</span></button>
+        <button class="btn btn-s" id="opening-btn" onclick="openOpening()" style="display:none;">⚖️ <span class="t-opening">期初余额</span></button>
       </div>
     </div>
     <div class="petty-balance-grid" id="petty-balance"></div>
@@ -474,6 +475,26 @@ input:checked+.slider:before{transform:translateX(18px);}
 </div>
 
 <!-- 备用金弹窗 -->
+<div class="overlay" id="modal-opening">
+  <div class="modal" style="width:420px;">
+    <div class="mhd"><h3>期初余额 / Opening Balances</h3><button class="close-btn" onclick="closeModals()">×</button></div>
+    <div style="background:#f0f7ff;border:1px solid #bae0ff;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#0958d9;line-height:1.6;">
+      填开账日当天<b>早上</b>每个人手上实际有多少钱。开账日之前的账都保留，但不再计入余额。<br>Enter what each person actually held on the start date. Older records are kept but no longer counted.
+    </div>
+    <div class="fg"><label>开账日期 / Start date</label><input type="date" id="op-start"></div>
+    <div class="fg"><label>徐慧 自己的资金（现金+银行）/ Xu Hui own funds</label><input type="number" step="0.01" id="op-own" placeholder="0.00"></div>
+    <div style="font-size:13px;font-weight:500;margin:6px 0 8px;">备用金 / Petty cash</div>
+    <div id="op-petty"></div>
+    <div style="font-size:13px;font-weight:500;margin:6px 0 4px;">司机备用金 / Drivers</div>
+    <div style="font-size:12px;color:#888;margin-bottom:8px;">参考用车系统 11 月「上月结转」/ Use Fleet's carried-over balance</div>
+    <div id="op-drivers"></div>
+    <div class="actions">
+      <button class="btn btn-s" onclick="closeModals()">取消 / Cancel</button>
+      <button class="btn btn-p" onclick="saveOpening()">保存 / Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-petty">
   <div class="modal" style="width:420px;">
     <div class="mhd"><h3 id="petty-modal-title" class="t-give-petty-title">发放备用金 / Issue Petty Cash</h3><button class="close-btn" onclick="closeModals()">×</button></div>
@@ -546,7 +567,7 @@ function nm(n){const v=PETTY_NAMES[n];return lang==='en'&&v?v.split(' / ')[1]:n;
 const T={
   zh:{
     'title':'官邸每月流水账 / Residence Ledger','sub':'支出 · 收入 · 备用金 / Expense · Income · Petty Cash',
-    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
+    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','opening':'期初余额','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
     'month-filter':'📅 月份 / Month','clear':'清除 / Clear',
     'm-expense':'支出 / Expense（AED）','m-income':'收入 / Income（AED）','m-balance':'结余 / Balance（AED）','m-petty':'备用金 / Petty Cash Balance',
     'tab-bills':'全部','tab-expense':'支出','tab-income':'收入','tab-petty':'备用金','tab-summary':'汇总','tab-export':'导出','tab-admin':'权限',
@@ -571,7 +592,7 @@ const T={
   },
   en:{
     'title':'Residence Monthly Ledger','sub':'Expenses · Income · Petty Cash · AI · Real-time Sync',
-    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
+    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','opening':'Opening','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
     'month-filter':'📅 Month','clear':'Clear',
     'm-expense':'Expense (AED)','m-income':'Income (AED)','m-balance':'Balance (AED)','m-petty':'Petty Cash Balance',
     'tab-bills':'All','tab-expense':'Expense','tab-income':'Income','tab-petty':'Petty Cash','tab-summary':'Summary','tab-export':'Export','tab-admin':'Admin',
@@ -730,6 +751,7 @@ async function initApp(user){
   if(currentUser.role==='admin'){
     document.getElementById('admin-tag').style.display='inline';
     document.getElementById('admin-tab').style.display='inline-block';
+    document.getElementById('opening-btn').style.display='inline-flex';
   }
   // All users can issue petty cash (members can transfer from their balance)
   document.getElementById('petty-add-btn').style.display='inline-flex';
@@ -817,6 +839,7 @@ async function loadAll(){
     incomes=results[1].data||[];
     pettyCash=results[2].data||[];
     if(isAdmin)users=results[3]?.data||[];
+    try{const o=await withTimeout(sb.from('ledger_settings').select('value').eq('key','opening'));if(!o.error&&o.data&&o.data[0])opening={...opening,...o.data[0].value};}catch(e){}
     try{const d=await withTimeout(sb.from('fleet_drivers').select('*').eq('active',true).order('id'));if(!d.error)fleetDrivers=d.data||[];}catch(e){}
 
     if(rb)rb.textContent='🔄';
@@ -878,7 +901,7 @@ function fmtAED(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maxi
 function renderMetrics(){
   // Income / expense / balance follow the month picker (defaults to current month)
   const m=getGlobalMonth();
-  const inM=b=>!m||(b.date&&b.date.startsWith(m));
+  const inM=b=>m?(b.date&&b.date.startsWith(m)):afterStart(b);
   const eFiltered=expenses.filter(inM), iFiltered=incomes.filter(inM);
   const eT=eFiltered.reduce((s,b)=>s+toAED(b),0);
   const iT=iFiltered.reduce((s,b)=>s+parseFloat(b.amount||0),0);
@@ -886,12 +909,11 @@ function renderMetrics(){
   const setLabel=(id,txt)=>{const el=document.getElementById(id)?.closest('.metric')?.querySelector('.ml');if(el)el.textContent=txt;};
   setLabel('m-total',L('支出 Expense','Expense'));
   setLabel('m-income',L('收入 Income','Income'));
-  setLabel('m-balance',L('结余 Balance','Balance'));
+  setLabel('m-balance',m?L('本月结余 Net','Net'):L('结余 Net','Net'));
   document.getElementById('m-total').textContent=fmtAED(eT);
   document.getElementById('m-income').textContent=fmtAED(iT);
   const bal=iT-eT, mb=document.getElementById('m-balance');
   mb.textContent=fmtAED(bal);mb.style.color=bal<0?'#cf1322':'#096dd9';
-  document.getElementById('m-count').textContent=eFiltered.length+iFiltered.length;
 
   // Petty cash: cumulative per-person balance (not month-filtered), total = sum held by everyone
   const isAdmin=currentUser?.role==='admin';
@@ -899,6 +921,17 @@ function renderMetrics(){
   const rows=holders.map(n=>[n,getPettyBalance(n)]);
   const total=rows.reduce((s,[,v])=>s+v,0);
   document.getElementById('m-petty').textContent='AED '+fmtAED(total);
+  // Funds on hand: opening (own + everyone's petty cash) + income − expense since start date
+  const fe=document.getElementById('m-funds'),fs=document.getElementById('m-funds-sub');
+  if(isAdmin){
+    const op0=(parseFloat(opening.own)||0)+PETTY_HOLDERS.reduce((s,n)=>s+openingOf(n),0)+openingOf('司机');
+    const inc=incomes.filter(afterStart).reduce((s,b)=>s+parseFloat(b.amount||0),0);
+    const exp=expenses.filter(afterStart).reduce((s,b)=>s+toAED(b),0);
+    const funds=op0+inc-exp;
+    fe.textContent=fmtAED(funds);fe.style.color=funds<0?'#cf1322':'';
+    fs.textContent=L(`${(opening.start||'').slice(5)} 起 · 含备用金 ${fmtAED(total)}`,`since ${(opening.start||'').slice(5)} · incl. petty ${fmtAED(total)}`);
+    document.getElementById('m-funds-l').textContent=L('现有资金 Funds','Funds on hand');
+  }else{fe.closest('.metric').style.display='none';}
   document.getElementById('m-petty-list').innerHTML=rows.map(([n,v])=>
     `<div style="background:#fff;border:1px solid #ffe7ba;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
       <span>${nm(n)}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
@@ -979,14 +1012,13 @@ function renderPetty(){
   const grid=document.getElementById('petty-balance');
   grid.innerHTML=members.map(name=>{
     const bal=getPettyBalance(name);
-    const received=pettyCash.filter(b=>b.receiver===name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-    const givenOut=pettyCash.filter(b=>b.giver===name&&b.receiver!==name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-    const spent=expenses.filter(b=>b.person===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);
+    const op=openingOf(name),received=pettyIn(name),givenOut=pettyOut(name),spent=pettySpent(name);
     const[bg,tc]=gc(name);
     return`<div class="petty-card">
       <div class="name" style="display:flex;align-items:center;gap:6px;">
         <span style="width:24px;height:24px;border-radius:50%;background:${bg};color:${tc};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${ini(name)}</span>${nm(name)}
       </div>
+      ${op?`<div class="row"><span>期初 / Opening</span><span>${fmtAED(op)}</span></div>`:''}
       <div class="row"><span>已收 / In</span><span>${fmtAED(received)}</span></div>
       ${givenOut>0?`<div class="row"><span>转出 / Out</span><span>${fmtAED(givenOut)}</span></div>`:''}
       <div class="row"><span>${t('used')}</span><span>${fmtAED(spent)}</span></div>
@@ -1409,23 +1441,19 @@ function normPay(p){
 function isPettyPay(p){return normPay(p)==='备用金';}
 function driverBreakdownHTML(){
   const m={};const add=(k,v)=>{m[k]=(m[k]||0)+v;};
-  pettyCash.forEach(b=>{const a=parseFloat(b.amount||0),k=b.driver_name||L('未指定','Unassigned');
+  Object.entries(opening.drivers||{}).forEach(([id,v])=>{const d=fleetDrivers.find(x=>String(x.id)===id);add(d?d.name:'#'+id,parseFloat(v)||0);});
+  pettyCash.forEach(b=>{if(!afterStart(b))return;const a=parseFloat(b.amount||0),k=b.driver_name||L('未指定','Unassigned');
     if(b.receiver==='司机'&&b.giver!=='司机')add(k,a);
     if(b.giver==='司机'&&b.receiver!=='司机')add(k,-a);});
-  expenses.forEach(b=>{if(b.person==='司机'&&isPettyPay(b.payment))add(b.driver_name||L('未指定','Unassigned'),-toAED(b));});
+  expenses.forEach(b=>{if(afterStart(b)&&b.person==='司机'&&isPettyPay(b.payment))add(b.driver_name||L('未指定','Unassigned'),-toAED(b));});
   const rows=Object.entries(m).filter(([,v])=>Math.abs(v)>0.004);
   if(!rows.length)return'';
   return`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #eee;font-size:12px;">`+rows.map(([k,v])=>
     `<div class="row"><span>${k}</span><span style="color:${v<0?'#cf1322':'#389e0d'}">${fmtAED(v)}</span></div>`).join('')+`</div>`;
 }
 function getPettyBalance(name){
-  // Received from others
-  const received=pettyCash.filter(b=>b.receiver===name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-  // Given to others (transfers out)
-  const given=pettyCash.filter(b=>b.giver===name&&b.receiver!==name).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-  // Spent via 备用金 payment
-  const spent=expenses.filter(b=>b.person===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);
-  return received-given-spent;
+  // Opening balance on the start date + flows since then (older records are kept but not counted)
+  return openingOf(name)+pettyIn(name)-pettyOut(name)-pettySpent(name);
 }
 
 function onPcGiverChange(){
@@ -1443,6 +1471,35 @@ function onPcAmountChange(){
 }
 
 let fleetDrivers=[];
+const PETTY_HOLDERS=['刘承林','保姆','杨文辉'];
+let opening={start:'2026-11-01',own:0,petty:{},drivers:{}};
+function afterStart(b){return !opening.start||(!!b.date&&b.date>=opening.start);}
+function openingOf(name){
+  if(name==='司机')return Object.values(opening.drivers||{}).reduce((s,v)=>s+(parseFloat(v)||0),0);
+  return parseFloat((opening.petty||{})[name])||0;
+}
+function pettyIn(name){return pettyCash.filter(b=>afterStart(b)&&b.receiver===name).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
+function pettyOut(name){return pettyCash.filter(b=>afterStart(b)&&b.giver===name&&b.receiver!==name).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
+function pettySpent(name){return expenses.filter(b=>afterStart(b)&&b.person===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
+function openOpening(){
+  document.getElementById('op-start').value=opening.start||'2026-11-01';
+  document.getElementById('op-own').value=opening.own||'';
+  const inp=(id,label,val)=>`<div style="display:grid;grid-template-columns:40% 1fr;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;"><span style="color:#555;">${label}</span><input type="number" step="0.01" id="${id}" value="${val||''}" placeholder="0.00" style="width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;border:1px solid #e5e5e5;border-radius:8px;font-family:inherit;font-size:14px;"></div>`;
+  document.getElementById('op-petty').innerHTML=PETTY_HOLDERS.map(n=>inp('op-p-'+n,PETTY_NAMES[n]||n,(opening.petty||{})[n])).join('');
+  const ds=[...fleetDrivers];
+  Object.keys(opening.drivers||{}).forEach(id=>{if(!ds.some(d=>String(d.id)===id))ds.push({id,name:'#'+id});});
+  document.getElementById('op-drivers').innerHTML=ds.map(d=>inp('op-d-'+d.id,d.name,(opening.drivers||{})[d.id])).join('');
+  document.getElementById('modal-opening').classList.add('open');
+}
+async function saveOpening(){
+  const num=id=>{const v=parseFloat(document.getElementById(id)?.value);return isNaN(v)?0:Math.round(v*100)/100;};
+  const v={start:document.getElementById('op-start').value||'2026-11-01',own:num('op-own'),petty:{},drivers:{}};
+  PETTY_HOLDERS.forEach(n=>{const x=num('op-p-'+n);if(x)v.petty[n]=x;});
+  document.querySelectorAll('#op-drivers input').forEach(el=>{const x=num(el.id);if(x)v.drivers[el.id.slice(5)]=x;});
+  const{error}=await sb.from('ledger_settings').upsert({key:'opening',value:v,updated_at:new Date().toISOString()});
+  if(error){alert('保存失败 / Save failed：'+error.message);return;}
+  opening=v;closeModals();render();
+}
 function driverInvolved(){return document.getElementById('pc-giver').value==='司机'||document.getElementById('pc-receiver').value==='司机';}
 function onPcDriverToggle(keepId){
   const box=document.getElementById('pc-driver-box'),sel=document.getElementById('pc-driver');
@@ -1588,7 +1645,7 @@ async function savePwd(){
 }
 
 function closeModals(){
-  ['modal-expense','modal-income','modal-petty','modal-pwd'].forEach(id=>document.getElementById(id).classList.remove('open'));
+  ['modal-expense','modal-income','modal-petty','modal-pwd','modal-opening'].forEach(id=>document.getElementById(id).classList.remove('open'));
 }
 
 /* ── Lightbox ── */
