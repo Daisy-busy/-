@@ -1066,7 +1066,7 @@ function renderPetty(){
   const list=pettyCash.filter(b=>{
     const monthOk=!fm||(b.date&&b.date.startsWith(fm));
     const personOk=!fp||b.receiver===fp;
-    const accessOk=isAdmin||b.receiver===currentUser.name;
+    const accessOk=isAdmin||b.receiver===currentUser.name||b.giver===currentUser.name;
     return monthOk&&personOk&&accessOk;
   });
   const el=document.getElementById('petty-list');
@@ -1414,20 +1414,20 @@ async function saveExpense(){
   if(!merchant||!amount||!person){alert(lang==='zh'?'请填写商家、金额和消费人':'Please fill merchant, amount and person');return;}
   let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)).join('\n').trim();
   const cat=document.getElementById('e-cat').value;
-  if(!editExpenseId&&cat!=='工资'&&person!=='司机'){
-    const drv=matchDriver(merchant+' '+note);
-    if(drv&&confirm(lang==='zh'
-      ?`这笔看起来是给司机${drv.name?'（'+drv.name+'）':''}的钱。\n给司机的钱属于备用金流转，不算支出。\n\n点「确定」改为发放备用金；点「取消」仍按支出保存。`
-      :`This looks like money for a driver${drv.name?' ('+drv.name+')':''}.\nMoney given to drivers is a petty-cash transfer, not an expense.\n\nOK = record as petty cash issue; Cancel = save as expense anyway.`)){
+  if(!editExpenseId&&cat!=='工资'){
+    const to=matchPerson(merchant+' '+note,person);
+    if(to&&confirm(lang==='zh'
+      ?`这笔看起来是给「${to.label}」的钱。\n家里人之间给钱属于备用金流转，不算支出。\n\n点「确定」改为备用金发放；点「取消」仍按支出保存。`
+      :`This looks like money given to ${to.label}.\nMoney passed between household members is a petty-cash transfer, not an expense.\n\nOK = record as petty cash transfer; Cancel = save as expense anyway.`)){
       const amt=document.getElementById('e-currency').value==='CNY'?parseFloat(amount)/CNY_RATE:parseFloat(amount);
       const pay=document.getElementById('e-pay').value,date=document.getElementById('e-date').value;
       closeModals();
       await openPetty();
       const giver=PETTY_HOLDERS.includes(person)||person==='徐慧'?person:'徐慧';
       document.getElementById('pc-giver').value=giver;
-      document.getElementById('pc-receiver').value='司机';
-      if(giver==='徐慧'&&ACCOUNTS.includes(normPay(pay)))document.getElementById('pc-account').value=normPay(pay);
-      onPcGiverChange();onPcDriverToggle(drv.id??'');
+      document.getElementById('pc-receiver').value=to.person;
+      if((giver==='徐慧'||to.person==='徐慧')&&ACCOUNTS.includes(normPay(pay)))document.getElementById('pc-account').value=normPay(pay);
+      onPcGiverChange();onPcDriverToggle(to.driverId??'');
       document.getElementById('pc-amount').value=+amt.toFixed(2);
       document.getElementById('pc-date').value=date||today();
       document.getElementById('pc-note').value=merchant+(note?' '+note:'');
@@ -1556,7 +1556,14 @@ function onPcAmountChange(){
 }
 
 let fleetDrivers=[];
-/* Does this text look like money handed to a driver? Returns {id,name} (id/name may be empty) or null */
+/* Money handed to another person in the household → petty-cash transfer. Returns {person, driverId, label} or null */
+const PERSON_ALIASES={'徐慧':['徐慧','xu hui','徐总'],'刘承林':['刘承林','承林','liu chenglin','chenglin'],'杨文辉':['杨文辉','文辉','yang wenhui','wenhui'],'保姆':['保姆','nanny']};
+function matchPerson(text,self){
+  const s=String(text||'').toLowerCase();if(!s.trim())return null;
+  if(self!=='司机'){const d=matchDriver(s);if(d)return{person:'司机',driverId:d.id,label:d.name?nm('司机')+'·'+d.name:nm('司机')};}
+  for(const [p,al] of Object.entries(PERSON_ALIASES)){if(p===self)continue;if(al.some(a=>s.includes(a)))return{person:p,driverId:'',label:nm(p)};}
+  return null;
+}
 function matchDriver(text){
   const s=String(text||'').toLowerCase();if(!s.trim())return null;
   for(const d of fleetDrivers){
@@ -1673,7 +1680,7 @@ function setPettySelects(mode){
     giverSel.innerHTML='<option value="">请选择 / Select</option>'+all.filter(n=>n!==me).map(n=>`<option value="${n}">${PETTY_NAMES[n]}</option>`).join('');
     giverSel.disabled=false;
   }else{
-    recvSel.innerHTML='<option value="">请选择 / Select</option>'+all.filter(n=>n!=='徐慧').map(n=>`<option value="${n}">${PETTY_NAMES[n]}</option>`).join('');
+    recvSel.innerHTML='<option value="">请选择 / Select</option>'+all.map(n=>`<option value="${n}">${n==='徐慧'?PETTY_NAMES[n]+'（退还 / Return）':PETTY_NAMES[n]}</option>`).join('');
     recvSel.disabled=false;
     giverSel.innerHTML='<option value="">请选择 / Select</option>'+all.map(n=>`<option value="${n}">${PETTY_NAMES[n]}</option>`).join('');
     giverSel.disabled=false;
