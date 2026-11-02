@@ -240,6 +240,13 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div class="metric balance-metric"><div class="ml">结余 / Balance（AED）</div><div class="mv mv-balance" id="m-balance">0</div></div>
     <div class="metric"><div class="ml" id="m-funds-l">现有资金 Funds</div><div class="mv" id="m-funds">0</div><div style="font-size:11px;color:#888;margin-top:2px;" id="m-funds-sub"></div></div>
   </div>
+  <div class="metric" id="acc-card" style="margin:-0.5rem 0 1.25rem;display:none;background:#f0f7ff;border-color:#bae0ff;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+      <div class="ml t-acc-sum" style="margin:0;">账户余额 Accounts</div>
+      <div style="font-size:12px;color:#888;white-space:nowrap;"><span class="t-total">合计</span> <span class="mv" style="font-size:17px;color:#0958d9;" id="m-acc">0</span></div>
+    </div>
+    <div id="m-acc-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;"></div>
+  </div>
   <div class="metric petty-metric" style="margin:-0.5rem 0 1.25rem;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
       <div class="ml t-petty-sum" style="margin:0;">备用金结余 Petty Cash</div>
@@ -414,6 +421,7 @@ input:checked+.slider:before{transform:translateX(18px);}
           <option value="家乐福采购">家乐福采购 / Carrefour</option><option value="国内采购">国内采购 / China Purchase</option><option value="汽车加油">汽车加油 / Fuel</option>
           <option value="汽车维修保养">汽车维修保养 / Car Maintenance</option><option value="停车费">停车费 / Parking</option><option value="固定开销">固定开销 / Fixed Cost</option><option value="手续费">手续费 / Fee</option><option value="餐费">餐费 / Dining</option><option value="高速费">高速费 / Toll</option><option value="罚款">罚款 / Fine</option><option value="Gas费">Gas费 / Gas</option><option value="工资">工资 / Salary</option><option value="维修费">维修费 / Repair</option>
         </select>
+        <div style="font-size:11px;color:#999;margin-top:3px;">🚗 加油/停车/保养/高速/罚款请在用车系统录入，会自动同步 / Car costs: enter in Fleet</div>
       </div>
     </div>
     <div id="salary-box" style="display:none;background:#e6f4ff;border:1px solid #91caff;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
@@ -464,7 +472,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     </div>
     <div class="frow">
       <div class="fg"><label class="t-status">状态 / Status</label><select id="i-status"><option value="已确认">已确认 / Confirmed</option><option value="待确认">待确认 / Pending</option></select></div>
-      <div class="fg"></div>
+      <div class="fg"><label>到账账户 / Into account *</label><select id="i-account"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
     </div>
     <div class="fg" style="margin-bottom:0;"><label class="t-note">备注 / Note</label><textarea id="i-note" rows="2"></textarea></div>
     <div class="actions">
@@ -482,7 +490,8 @@ input:checked+.slider:before{transform:translateX(18px);}
       填开账日当天<b>早上</b>每个人手上实际有多少钱。开账日之前的账都保留，但不再计入余额。<br>Enter what each person actually held on the start date. Older records are kept but no longer counted.
     </div>
     <div class="fg"><label>开账日期 / Start date</label><input type="date" id="op-start"></div>
-    <div class="fg"><label>徐慧 自己的资金（现金+银行）/ Xu Hui own funds</label><input type="number" step="0.01" id="op-own" placeholder="0.00"></div>
+    <div style="font-size:13px;font-weight:500;margin:6px 0 8px;">徐慧 的现金和银行卡 / Xu Hui's cash & cards</div>
+    <div id="op-acc"></div>
     <div style="font-size:13px;font-weight:500;margin:6px 0 8px;">备用金 / Petty cash</div>
     <div id="op-petty"></div>
     <div style="font-size:13px;font-weight:500;margin:6px 0 4px;">司机备用金 / Drivers</div>
@@ -513,6 +522,7 @@ input:checked+.slider:before{transform:translateX(18px);}
         </select>
       </div>
     </div>
+    <div class="fg" id="pc-account-box" style="display:none;margin-bottom:14px;"><label>徐慧 的哪个账户 / Xu Hui's account</label><select id="pc-account"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
     <div class="fg" id="pc-driver-box" style="display:none;margin-bottom:14px;"><label>具体司机 / Which driver *</label>
       <select id="pc-driver"></select>
       <div style="font-size:12px;color:#888;margin-top:4px;">会同步到用车系统该司机名下 / Syncs to this driver in Fleet</div>
@@ -567,7 +577,7 @@ function nm(n){const v=PETTY_NAMES[n];return lang==='en'&&v?v.split(' / ')[1]:n;
 const T={
   zh:{
     'title':'官邸每月流水账 / Residence Ledger','sub':'支出 · 收入 · 备用金 / Expense · Income · Petty Cash',
-    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','opening':'期初余额','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
+    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','opening':'期初余额','acc-sum':'账户余额 Accounts','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
     'month-filter':'📅 月份 / Month','clear':'清除 / Clear',
     'm-expense':'支出 / Expense（AED）','m-income':'收入 / Income（AED）','m-balance':'结余 / Balance（AED）','m-petty':'备用金 / Petty Cash Balance',
     'tab-bills':'全部','tab-expense':'支出','tab-income':'收入','tab-petty':'备用金','tab-summary':'汇总','tab-export':'导出','tab-admin':'权限',
@@ -592,7 +602,7 @@ const T={
   },
   en:{
     'title':'Residence Monthly Ledger','sub':'Expenses · Income · Petty Cash · AI · Real-time Sync',
-    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','opening':'Opening','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
+    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','opening':'Opening','acc-sum':'Account Balances','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
     'month-filter':'📅 Month','clear':'Clear',
     'm-expense':'Expense (AED)','m-income':'Income (AED)','m-balance':'Balance (AED)','m-petty':'Petty Cash Balance',
     'tab-bills':'All','tab-expense':'Expense','tab-income':'Income','tab-petty':'Petty Cash','tab-summary':'Summary','tab-export':'Export','tab-admin':'Admin',
@@ -676,6 +686,8 @@ function catLabel(v){return CATS_BILINGUAL[v]||v;}
 function payLabel(v){return PAY_BILINGUAL[v]||v;}
 function statusLabel(v){return STATUS_BILINGUAL[v]||v;}
 
+const FLEET_CATS=['汽车加油','汽车维修保养','停车费','高速费','罚款'];
+function ensureCatOption(v){const s=document.getElementById('e-cat');if(v&&![...s.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=catLabel(v);s.appendChild(o);}}
 function rebuildDropdowns(){
   // Always bilingual options
   const catOpts=CATS_ZH.map((z,i)=>`<option value="${z}">${z} / ${CATS_EN[i]}</option>`).join('');
@@ -686,7 +698,7 @@ function rebuildDropdowns(){
     sel.value=v;
   });
   const ecat=document.getElementById('e-cat');
-  if(ecat){const v=ecat.value;ecat.innerHTML=catOpts;ecat.value=v||'买菜';}
+  if(ecat){const v=ecat.value;ecat.innerHTML=CATS_ZH.filter(z=>!FLEET_CATS.includes(z)).map(z=>`<option value="${z}">${catLabel(z)}</option>`).join('');ecat.value=v||'买菜';}
 
   const payVals=['WIO','FAB','NBD','现金','备用金'];
   const payLabels=['WIO','FAB','NBD','现金 / Cash','备用金 / Petty Cash'];
@@ -924,10 +936,15 @@ function renderMetrics(){
   // Funds on hand: opening (own + everyone's petty cash) + income − expense since start date
   const fe=document.getElementById('m-funds'),fs=document.getElementById('m-funds-sub');
   if(isAdmin){
-    const op0=(parseFloat(opening.own)||0)+PETTY_HOLDERS.reduce((s,n)=>s+openingOf(n),0)+openingOf('司机');
-    const inc=incomes.filter(afterStart).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-    const exp=expenses.filter(afterStart).reduce((s,b)=>s+toAED(b),0);
-    const funds=op0+inc-exp;
+    const accRows=ACCOUNTS.map(a=>[a,accountBal(a)]);
+    const un=unassignedIncome();if(Math.abs(un)>0.004)accRows.push([L('未指定账户','Unassigned'),un]);
+    const accT=accRows.reduce((s,[,v])=>s+v,0);
+    document.getElementById('acc-card').style.display='block';
+    document.getElementById('m-acc').textContent='AED '+fmtAED(accT);
+    document.getElementById('m-acc-list').innerHTML=accRows.map(([n,v])=>
+      `<div style="background:#fff;border:1px solid #d6e8ff;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
+        <span>${n==='现金'?L('现金','Cash'):n}</span><b style="color:${v<0?'#cf1322':v>0?'#0958d9':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
+    const funds=accT+total;
     fe.textContent=fmtAED(funds);fe.style.color=funds<0?'#cf1322':'';
     fs.textContent=L(`${(opening.start||'').slice(5)} 起 · 含备用金 ${fmtAED(total)}`,`since ${(opening.start||'').slice(5)} · incl. petty ${fmtAED(total)}`);
     document.getElementById('m-funds-l').textContent=L('现有资金 Funds','Funds on hand');
@@ -1329,7 +1346,7 @@ function editExpense(id){
   document.getElementById('expense-save-btn').querySelector('span').textContent=lang==='zh'?'保存修改':'Save';
   document.getElementById('e-merchant').value=b.merchant||'';document.getElementById('e-amount').value=b.amount||'';
   document.getElementById('e-currency').value=b.currency||'AED';
-  document.getElementById('e-person').value=b.person||'';document.getElementById('e-cat').value=b.category||'买菜';
+  document.getElementById('e-person').value=b.person||'';ensureCatOption(b.category);document.getElementById('e-cat').value=b.category||'买菜';
   document.getElementById('e-date').value=b.date||'';document.getElementById('e-pay').value=b.payment||'WIO';
   document.getElementById('e-status').value=b.status||'已确认';document.getElementById('e-note').value=b.note||'';
   document.getElementById('ai-box-e').style.display='none';onAmountChange();
@@ -1387,7 +1404,7 @@ async function openIncome(){
   document.getElementById('income-save-btn').querySelector('span').textContent=t('save-income');
   ['i-payer','i-payee','i-amount','i-note'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('i-date').value=today();document.getElementById('i-status').value='已确认';
-  document.getElementById('i-pay').value='现金';document.getElementById('ai-box-i').style.display='none';
+  document.getElementById('i-pay').value='现金';document.getElementById('i-account').value='现金';document.getElementById('ai-box-i').style.display='none';
   renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
   document.getElementById('modal-income').classList.add('open');
 }
@@ -1400,6 +1417,7 @@ function editIncome(id){
   document.getElementById('i-payer').value=b.payer||'';document.getElementById('i-payee').value=b.payee||'';
   document.getElementById('i-amount').value=b.amount||'';document.getElementById('i-date').value=b.date||'';
   document.getElementById('i-status').value=b.status||'已确认';document.getElementById('i-pay').value=b.payment||'现金';
+  document.getElementById('i-account').value=b.account||'现金';
   document.getElementById('i-note').value=b.note||'';document.getElementById('ai-box-i').style.display='none';
   renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
   document.getElementById('modal-income').classList.add('open');
@@ -1409,7 +1427,7 @@ async function saveIncome(){
   const payer=document.getElementById('i-payer').value.trim(),payee=document.getElementById('i-payee').value.trim(),amount=document.getElementById('i-amount').value;
   if(!payer||!payee||!amount){alert(lang==='zh'?'请填写打款人、收款人和金额':'Please fill payer, payee and amount');return;}
   const row={payer,payee,amount:parseFloat(amount),date:document.getElementById('i-date').value,
-    status:document.getElementById('i-status').value,payment:document.getElementById('i-pay').value,
+    status:document.getElementById('i-status').value,payment:document.getElementById('i-pay').value,account:document.getElementById('i-account').value,
     note:document.getElementById('i-note').value.trim(),photos:currentPhotosI,created_by:currentUser.name};
   if(editIncomeId){
     const{error}=await sb.from('incomes').update(row).eq('id',editIncomeId);
@@ -1472,6 +1490,16 @@ function onPcAmountChange(){
 
 let fleetDrivers=[];
 const PETTY_HOLDERS=['刘承林','保姆','杨文辉'];
+const ACCOUNTS=['现金','WIO','FAB','NBD'];
+function openingAcc(a){const o=opening.accounts||{};if(!opening.accounts&&a==='现金')return parseFloat(opening.own)||0;return parseFloat(o[a])||0;}
+function accountBal(a){
+  const inc=incomes.filter(b=>afterStart(b)&&(b.account||'')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
+  const exp=expenses.filter(b=>afterStart(b)&&normPay(b.payment)===a).reduce((s,b)=>s+toAED(b),0);
+  const out=pettyCash.filter(b=>afterStart(b)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
+  const back=pettyCash.filter(b=>afterStart(b)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
+  return openingAcc(a)+inc-exp-out+back;
+}
+function unassignedIncome(){return incomes.filter(b=>afterStart(b)&&!ACCOUNTS.includes(b.account||'')).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
 let opening={start:'2026-11-01',own:0,petty:{},drivers:{}};
 function afterStart(b){return !opening.start||(!!b.date&&b.date>=opening.start);}
 function openingOf(name){
@@ -1483,8 +1511,8 @@ function pettyOut(name){return pettyCash.filter(b=>afterStart(b)&&b.giver===name
 function pettySpent(name){return expenses.filter(b=>afterStart(b)&&b.person===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
 function openOpening(){
   document.getElementById('op-start').value=opening.start||'2026-11-01';
-  document.getElementById('op-own').value=opening.own||'';
   const inp=(id,label,val)=>`<div style="display:grid;grid-template-columns:40% 1fr;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;"><span style="color:#555;">${label}</span><input type="number" step="0.01" id="${id}" value="${val||''}" placeholder="0.00" style="width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;border:1px solid #e5e5e5;border-radius:8px;font-family:inherit;font-size:14px;"></div>`;
+  document.getElementById('op-acc').innerHTML=ACCOUNTS.map(a=>inp('op-a-'+a,a==='现金'?'现金 / Cash':a,openingAcc(a))).join('');
   document.getElementById('op-petty').innerHTML=PETTY_HOLDERS.map(n=>inp('op-p-'+n,PETTY_NAMES[n]||n,(opening.petty||{})[n])).join('');
   const ds=[...fleetDrivers];
   Object.keys(opening.drivers||{}).forEach(id=>{if(!ds.some(d=>String(d.id)===id))ds.push({id,name:'#'+id});});
@@ -1493,7 +1521,9 @@ function openOpening(){
 }
 async function saveOpening(){
   const num=id=>{const v=parseFloat(document.getElementById(id)?.value);return isNaN(v)?0:Math.round(v*100)/100;};
-  const v={start:document.getElementById('op-start').value||'2026-11-01',own:num('op-own'),petty:{},drivers:{}};
+  const v={start:document.getElementById('op-start').value||'2026-11-01',accounts:{},petty:{},drivers:{}};
+  ACCOUNTS.forEach(a=>{v.accounts[a]=num('op-a-'+a);});
+  v.own=Object.values(v.accounts).reduce((s,x)=>s+x,0);
   PETTY_HOLDERS.forEach(n=>{const x=num('op-p-'+n);if(x)v.petty[n]=x;});
   document.querySelectorAll('#op-drivers input').forEach(el=>{const x=num(el.id);if(x)v.drivers[el.id.slice(5)]=x;});
   const{error}=await sb.from('ledger_settings').upsert({key:'opening',value:v,updated_at:new Date().toISOString()});
@@ -1502,6 +1532,8 @@ async function saveOpening(){
 }
 function driverInvolved(){return document.getElementById('pc-giver').value==='司机'||document.getElementById('pc-receiver').value==='司机';}
 function onPcDriverToggle(keepId){
+  const xh=document.getElementById('pc-giver').value==='徐慧'||document.getElementById('pc-receiver').value==='徐慧';
+  document.getElementById('pc-account-box').style.display=xh?'block':'none';
   const box=document.getElementById('pc-driver-box'),sel=document.getElementById('pc-driver');
   const show=driverInvolved();box.style.display=show?'block':'none';
   if(!show)return;
@@ -1543,6 +1575,7 @@ async function openPettyReceive(){
   document.getElementById('pc-date').value=today();
   document.getElementById('pc-note').value='';
   document.getElementById('pc-balance-hint').style.display='none';
+  document.getElementById('pc-account').value='现金';
   onPcDriverToggle('');
   document.getElementById('modal-petty').classList.add('open');
 }
@@ -1559,6 +1592,7 @@ async function openPetty(){
   document.getElementById('pc-date').value=today();
   document.getElementById('pc-note').value='';
   document.getElementById('pc-balance-hint').style.display='none';
+  document.getElementById('pc-account').value='现金';
   onPcGiverChange();onPcDriverToggle('');
   document.getElementById('modal-petty').classList.add('open');
 }
@@ -1576,6 +1610,7 @@ function editPetty(id){
   document.getElementById('pc-amount').value=b.amount||'';
   document.getElementById('pc-date').value=b.date||'';
   document.getElementById('pc-note').value=b.note||'';
+  document.getElementById('pc-account').value=b.account||'现金';
   onPcGiverChange();onPcDriverToggle(b.driver_id??'');
   document.getElementById('modal-petty').classList.add('open');
 }
@@ -1600,7 +1635,8 @@ async function savePetty(){
     if(!v){alert('请选择具体是哪位司机 / Please select the driver');return;}
     const d=fleetDrivers.find(x=>String(x.id)===v);driver_id=parseInt(v);driver_name=d?d.name:null;
   }
-  const row={giver,receiver,amount,driver_id,driver_name,
+  const account=(giver==='徐慧'||receiver==='徐慧')?document.getElementById('pc-account').value:null;
+  const row={giver,receiver,amount,driver_id,driver_name,account,
     date:document.getElementById('pc-date').value,
     note:document.getElementById('pc-note').value.trim(),
     created_by:currentUser.name};
