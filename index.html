@@ -618,13 +618,15 @@ function personOpts(list){return list.map(n=>`<option value="${n}">${PETTY_NAMES
 function buildPeopleSelects(){
   const act=allUsers.filter(u=>(u.status||'active')==='active').map(u=>u.name);
   const ln=document.getElementById('login-name');
-  if(ln&&act.length){const v=ln.value;ln.innerHTML='<option value="">请选择 / Select</option>'+personOpts(act.filter(n=>!DISABLED_LOGINS.includes(n)));ln.value=v;}
+  if(ln&&act.length){const v=ln.value;const lu=allUsers.filter(u=>(u.status||'active')==='active'&&!DISABLED_LOGINS.includes(u.name)&&!(u.name==='司机'&&u.driver_id==null));
+    ln.innerHTML='<option value="">请选择 / Select</option>'+lu.map(u=>`<option value="${u.name}">${u.name==='司机'?driverLoginLabel(u):(PETTY_NAMES[u.name]||u.name)}</option>`).join('');ln.value=v;}
   const ep=document.getElementById('e-person');
   if(ep&&act.length){const v=ep.value;ep.innerHTML='<option value="">请选择 / Select</option>'+personOpts(act);ep.value=v;}
   if(typeof applyLang==='function'&&document.body)try{langWalk(document.body);}catch(e){}
 }
 async function loadPeople(){
-  try{const{data,error}=await sb.from('users').select('id,name,name_en,status,role,phone,created_at').order('created_at');if(!error&&data)applyPeople(data);}catch(e){}
+  try{const fd=await sb.from('fleet_drivers').select('*').order('id');if(!fd.error&&fd.data&&!fleetDrivers.length)fleetDrivers=fd.data.filter(d=>d.active!==false);}catch(e){}
+  try{const{data,error}=await sb.from('users').select('id,name,name_en,status,role,phone,driver_id,created_at').order('created_at');if(!error&&data)applyPeople(data);}catch(e){}
 }
 function toggleRegister(show){document.getElementById('reg-box').style.display=show?'block':'none';document.getElementById('reg-msg').style.display='none';}
 async function doRegister(){
@@ -750,7 +752,7 @@ function applyLang(){
     if(T[lang][key])el.textContent=T[lang][key];
   });
   langWalk(document.body);startLangObserver();
-  if(currentUser){const ud=document.getElementById('user-display');if(ud)ud.textContent=nm(currentUser.name);}
+  if(currentUser){const ud=document.getElementById('user-display');if(ud)ud.textContent=userLabel(currentUser);}
   updateKeyStatus();
 }
 
@@ -831,7 +833,13 @@ function gc(n){const i=PEOPLE.indexOf(n);return COLORS[i>=0?i%COLORS.length:0];}
 function ini(n){return n?n.slice(0,2):'?';}
 function today(){return new Date().toISOString().split('T')[0];}
 function curMonth(){return new Date().toISOString().slice(0,7);}
-const DISABLED_LOGINS=['司机'];
+const DISABLED_LOGINS=[];   // the shared 司机 account is now bound to one driver (users.driver_id)
+function myDriverId(){return currentUser&&currentUser.name==='司机'&&currentUser.driver_id!=null?currentUser.driver_id:null;}
+function driverNameById(id){const d=fleetDrivers.find(x=>String(x.id)===String(id));return d?d.name:'';}
+/* Display name of a user row: the 司机 account shows the driver's own name */
+function driverLoginLabel(u){const cn=(driverNameById(u.driver_id)||'').match(/[\u4e00-\u9fff]+/);const zh=cn?cn[0]:'司机';return u.name_en?`${zh} / ${u.name_en}`:zh;}
+function holderLabel(n){return n==='司机'&&myDriverId()!=null?userLabel(currentUser):nm(n);}
+function userLabel(u){if(u&&u.name==='司机'&&u.driver_id!=null){const en=u.name_en||'';const cn=(driverNameById(u.driver_id)||'').match(/[\u4e00-\u9fff]+/);const zh=cn?cn[0]:(en||'司机');return lang==='en'?(en||zh):zh;}return u?nm(u.name):'';}
 function toAED(b){const a=parseFloat(b.amount||0);return b.currency==='CNY'?a/CNY_RATE:a;}
 
 async function doLogin(){
@@ -841,7 +849,7 @@ async function doLogin(){
   const{data,error}=await sb.from('users').select('*');
   if(error||!data||!data.length){showLoginErr(lang==='zh'?'无法连接数据库':'Cannot connect to database');return;}
   const user=data.find(u=>u.name===name&&u.password===pass);
-  if(user&&DISABLED_LOGINS.includes(user.name)){showLoginErr('司机请使用用车系统记账 / Drivers please use the Fleet app');return;}
+  if(user&&(DISABLED_LOGINS.includes(user.name)||(user.name==='司机'&&user.driver_id==null))){showLoginErr('司机请使用用车系统记账 / Drivers please use the Fleet app');return;}
   if(user&&user.status==='pending'){showLoginErr('账号还在等管理员审核 / Waiting for admin approval');return;}
   if(user&&user.status==='rejected'){showLoginErr('注册未通过，请联系管理员 / Registration was not approved');return;}
   if(!user){showLoginErr(lang==='zh'?'用户名或密码错误':'Invalid name or password');return;}
@@ -855,7 +863,7 @@ async function initApp(user){
   currentUser=user;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('main-app').style.display='block';
-  document.getElementById('user-display').textContent=nm(currentUser.name);
+  document.getElementById('user-display').textContent=userLabel(currentUser);
   if(currentUser.role==='admin'){
     document.getElementById('admin-tag').style.display='inline';
     document.getElementById('admin-tab').style.display='inline-block';
@@ -897,7 +905,7 @@ async function autoLogin(){
     const{data}=await sb.from('users').select('*');
     if(!data)return false;
     const fresh=data.find(u=>u.id===user.id&&u.password===user.password);
-    if(!fresh||DISABLED_LOGINS.includes(fresh.name)||(fresh.status&&fresh.status!=='active')){try{localStorage.removeItem('current_user');}catch(e){}return false;}
+    if(!fresh||DISABLED_LOGINS.includes(fresh.name)||(fresh.name==='司机'&&fresh.driver_id==null)||(fresh.status&&fresh.status!=='active')){try{localStorage.removeItem('current_user');}catch(e){}return false;}
     await initApp(fresh);
     return true;
   }catch(e){return false;}
@@ -922,12 +930,14 @@ async function loadAll(){
     // Run all queries in parallel
     let eq=sb.from('expenses').select('*').order('date',{ascending:false});
     if(!canAll)eq=eq.eq('person',currentUser.name);
+    if(!canAll&&myDriverId()!=null)eq=eq.eq('driver_id',myDriverId());
 
     let iq=sb.from('incomes').select('*').order('date',{ascending:false});
     if(!canAll)iq=iq.eq('payee',currentUser.name);
 
     let pq=sb.from('petty_cash').select('*').order('date',{ascending:false});
     if(!canAll)pq=pq.or(`receiver.eq.${currentUser.name},giver.eq.${currentUser.name}`);
+    if(!canAll&&myDriverId()!=null)pq=pq.eq('driver_id',myDriverId());
 
     const queries=[
       withTimeout(eq),
@@ -1051,7 +1061,7 @@ function renderMetrics(){
   }
   document.getElementById('m-petty-list').innerHTML=rows.map(([n,v])=>
     `<div style="background:#fff;border:1px solid #ffe7ba;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
-      <span>${nm(n)}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
+      <span>${holderLabel(n)}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
   document.querySelectorAll('#m-petty-list>div').forEach((el,i)=>{el.classList.add('clickable');el.onclick=ev=>{ev.stopPropagation();goTab('petty',{fp3:rows[i][0]});};});
 }
 
@@ -1134,7 +1144,7 @@ function renderPetty(){
     const[bg,tc]=gc(name);
     return`<div class="petty-card">
       <div class="name" style="display:flex;align-items:center;gap:6px;">
-        <span style="width:24px;height:24px;border-radius:50%;background:${bg};color:${tc};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${ini(name)}</span>${nm(name)}
+        <span style="width:24px;height:24px;border-radius:50%;background:${bg};color:${tc};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${ini(name)}</span>${holderLabel(name)}
       </div>
       ${op?`<div class="row"><span>期初 / Opening</span><span>${fmtAED(op)}</span></div>`:''}
       <div class="row"><span>已收 / In</span><span>${fmtAED(received)}</span></div>
@@ -1200,7 +1210,7 @@ function renderAdmin(){
     <td style="font-weight:500;">${u.name}${u.name_en?` <span style="color:#888;font-weight:400;">${u.name_en}</span>`:''}<div style="font-size:11px;color:#888;">📱 ${u.phone||'-'} · ${L('待审核','Pending')}</div></td>
     <td colspan="3" style="text-align:right;white-space:nowrap;"><button class="btn btn-s btn-sm" onclick="approveUser('${u.id}',false)">${L('拒绝','Reject')}</button> <button class="btn btn-p btn-sm" onclick="approveUser('${u.id}',true)">${L('通过','Approve')}</button></td>
   </tr>`:`<tr>
-    <td style="font-weight:500;">${u.name}${u.phone?`<div style="font-size:11px;color:#888;font-weight:400;">📱 ${u.phone}</div>`:''}</td>
+    <td style="font-weight:500;">${u.name==='司机'&&u.driver_id!=null?userLabel(u):u.name}${u.phone?`<div style="font-size:11px;color:#888;font-weight:400;">📱 ${u.phone}</div>`:''}</td>
     <td><span style="font-size:12px;color:${u.role==='admin'?'#d46b08':'#888'};">${u.role==='admin'?(lang==='zh'?'管理员 / Admin':'Admin'):(lang==='zh'?'成员':'Member')}</span></td>
     <td>${u.role==='admin'?`<span style="font-size:12px;color:#aaa;">${lang==='zh'?'全部可见':'Full access'}</span>`:`<label class="toggle"><input type="checkbox" ${u.can_view_all?'checked':''} onchange="togglePerm('${u.id}',this.checked)"><span class="slider"></span></label>`}</td>
     <td><button class="btn btn-s btn-sm" onclick="openPwd('${u.id}','${u.name}')">${lang==='zh'?'改密码':'Change'}</button></td>
@@ -1530,6 +1540,7 @@ async function saveExpense(){
     category:cat,date:document.getElementById('e-date').value,
     status:document.getElementById('e-status').value,payment:document.getElementById('e-pay').value,
     note,photos:currentPhotosE,created_by:currentUser.name};
+  if(person==='司机'&&myDriverId()!=null){row.driver_id=myDriverId();row.driver_name=driverNameById(myDriverId())||null;}
   if(editExpenseId){
     const{error}=await sb.from('expenses').update(row).eq('id',editExpenseId);
     if(error){alert('保存失败：'+error.message);return;}
@@ -1713,6 +1724,7 @@ function unassignedIncome(){return incomes.filter(b=>afterStart(b)&&!ACCOUNTS.in
 let opening={start:'2026-11-01',own:0,petty:{},drivers:{}};
 function afterStart(b){return !opening.start||(!!b.date&&b.date>=opening.start);}
 function openingOf(name){
+  if(name==='司机'&&myDriverId()!=null)return parseFloat((opening.drivers||{})[myDriverId()])||0;
   if(name==='司机')return Object.values(opening.drivers||{}).reduce((s,v)=>s+(parseFloat(v)||0),0);
   return parseFloat((opening.petty||{})[name])||0;
 }
@@ -1750,6 +1762,8 @@ function onPcDriverToggle(keepId){
   const cur=keepId!==undefined?keepId:sel.value;
   sel.innerHTML='<option value="">请选择司机 / Select driver</option>'+fleetDrivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
   if(cur!==null&&cur!==undefined&&cur!=='')sel.value=String(cur);
+  sel.disabled=false;
+  if(myDriverId()!=null&&(document.getElementById('pc-giver').value==='司机'||document.getElementById('pc-receiver').value==='司机')){sel.value=String(myDriverId());sel.disabled=true;}
 }
 function driverLabel(b){return b.driver_name?`${nm('司机')}·${b.driver_name}`:nm('司机');}
 let pettyMode='give'; // 'give' = 发放, 'receive' = 收到登记
