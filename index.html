@@ -177,6 +177,9 @@ input:checked+.slider:before{transform:translateX(18px);}
   #m-petty-list{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
 }
 .lang-btn{white-space:nowrap;}
+.clickable{cursor:pointer;transition:box-shadow .15s,transform .05s;}
+.metric.clickable:hover,#m-petty-list>div:hover,#m-acc-list>div:hover{box-shadow:0 2px 8px rgba(0,0,0,.08);}
+.clickable:active{transform:scale(.99);}
 </style>
 </head>
 <body>
@@ -235,19 +238,18 @@ input:checked+.slider:before{transform:translateX(18px);}
   </div>
 
   <div class="metric-grid">
-    <div class="metric"><div class="ml">支出 / Expense（AED）</div><div class="mv" id="m-total">0</div></div>
-    <div class="metric income-metric"><div class="ml">收入 / Income（AED）</div><div class="mv mv-income" id="m-income">0</div></div>
-    <div class="metric balance-metric"><div class="ml">结余 / Balance（AED）</div><div class="mv mv-balance" id="m-balance">0</div></div>
-    <div class="metric"><div class="ml" id="m-funds-l">现有资金 Funds</div><div class="mv" id="m-funds">0</div><div style="font-size:11px;color:#888;margin-top:2px;" id="m-funds-sub"></div></div>
+    <div class="metric clickable" onclick="goTab('expense')"><div class="ml">支出 / Expense（AED）</div><div class="mv" id="m-total">0</div></div>
+    <div class="metric income-metric clickable" onclick="goTab('income-tab')"><div class="ml">收入 / Income（AED）</div><div class="mv mv-income" id="m-income">0</div></div>
+    <div class="metric balance-metric clickable" style="grid-column:1/-1;" onclick="goTab('summary')"><div class="ml" id="m-balance-l">结余 / Balance（AED）</div><div class="mv mv-balance" id="m-balance">0</div><div style="font-size:12px;color:#666;margin-top:4px;" id="m-balance-sub"></div></div>
   </div>
-  <div class="metric" id="acc-card" style="margin:-0.5rem 0 1.25rem;display:none;background:#f0f7ff;border-color:#bae0ff;">
+  <div class="metric clickable" id="acc-card" onclick="goTab('expense')" style="margin:-0.5rem 0 1.25rem;display:none;background:#f0f7ff;border-color:#bae0ff;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
       <div class="ml t-acc-sum" style="margin:0;">账户余额 Accounts</div>
       <div style="font-size:12px;color:#888;white-space:nowrap;"><span class="t-total">合计</span> <span class="mv" style="font-size:17px;color:#0958d9;" id="m-acc">0</span></div>
     </div>
     <div id="m-acc-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;"></div>
   </div>
-  <div class="metric petty-metric" style="margin:-0.5rem 0 1.25rem;">
+  <div class="metric petty-metric clickable" onclick="goTab('petty')" style="margin:-0.5rem 0 1.25rem;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
       <div class="ml t-petty-sum" style="margin:0;">备用金结余 Petty Cash</div>
       <div style="font-size:12px;color:#888;white-space:nowrap;"><span class="t-total">合计</span> <span class="mv mv-petty" style="font-size:17px;" id="m-petty">0</span></div>
@@ -921,11 +923,13 @@ function renderMetrics(){
   const setLabel=(id,txt)=>{const el=document.getElementById(id)?.closest('.metric')?.querySelector('.ml');if(el)el.textContent=txt;};
   setLabel('m-total',L('支出 Expense','Expense'));
   setLabel('m-income',L('收入 Income','Income'));
-  setLabel('m-balance',m?L('本月结余 Net','Net'):L('结余 Net','Net'));
-  document.getElementById('m-total').textContent=fmtAED(eT);
+    document.getElementById('m-total').textContent=fmtAED(eT);
   document.getElementById('m-income').textContent=fmtAED(iT);
-  const bal=iT-eT, mb=document.getElementById('m-balance');
-  mb.textContent=fmtAED(bal);mb.style.color=bal<0?'#cf1322':'#096dd9';
+  const net=iT-eT, mb=document.getElementById('m-balance'), mbl=document.getElementById('m-balance-l'), mbs=document.getElementById('m-balance-sub');
+  const netTxt=(net>0?'+':'')+fmtAED(net);
+  const per=m?(m===curMonth()?L('本月','This month'):m):L('开账以来','Since start');
+  // non-admin: own monthly net; admin: real balance is filled in below
+  mbl.textContent=L('收支 Net','Net')+' · '+per;mb.textContent=netTxt;mb.style.color=net<0?'#cf1322':'#096dd9';mbs.textContent='';
 
   // Petty cash: cumulative per-person balance (not month-filtered), total = sum held by everyone
   const isAdmin=currentUser?.role==='admin';
@@ -934,7 +938,6 @@ function renderMetrics(){
   const total=rows.reduce((s,[,v])=>s+v,0);
   document.getElementById('m-petty').textContent='AED '+fmtAED(total);
   // Funds on hand: opening (own + everyone's petty cash) + income − expense since start date
-  const fe=document.getElementById('m-funds'),fs=document.getElementById('m-funds-sub');
   if(isAdmin){
     const accRows=ACCOUNTS.map(a=>[a,accountBal(a)]);
     const un=unassignedIncome();if(Math.abs(un)>0.004)accRows.push([L('未指定账户','Unassigned'),un]);
@@ -944,14 +947,17 @@ function renderMetrics(){
     document.getElementById('m-acc-list').innerHTML=accRows.map(([n,v])=>
       `<div style="background:#fff;border:1px solid #d6e8ff;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
         <span>${n==='现金'?L('现金','Cash'):n}</span><b style="color:${v<0?'#cf1322':v>0?'#0958d9':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
+    document.querySelectorAll('#m-acc-list>div').forEach((el,i)=>{el.classList.add('clickable');const a=accRows[i][0];el.onclick=ev=>{ev.stopPropagation();ACCOUNTS.includes(a)?goTab('expense',{fpay2:a}):goTab('income-tab');};});
     const funds=accT+total;
-    fe.textContent=fmtAED(funds);fe.style.color=funds<0?'#cf1322':'';
-    fs.textContent=L(`${(opening.start||'').slice(5)} 起 · 含备用金 ${fmtAED(total)}`,`since ${(opening.start||'').slice(5)} · incl. petty ${fmtAED(total)}`);
-    document.getElementById('m-funds-l').textContent=L('现有资金 Funds','Funds on hand');
-  }else{fe.closest('.metric').style.display='none';}
+    mbl.textContent=L('结余（现有资金）Balance','Balance (funds on hand)');
+    mb.textContent=fmtAED(funds);mb.style.color=funds<0?'#cf1322':'#096dd9';
+    mbs.innerHTML=L(`${per}收支 <b style="color:${net<0?'#cf1322':'#389e0d'}">${netTxt}</b> · 账户 ${fmtAED(accT)} · 备用金 ${fmtAED(total)}`,
+                    `${per} net <b style="color:${net<0?'#cf1322':'#389e0d'}">${netTxt}</b> · Accounts ${fmtAED(accT)} · Petty ${fmtAED(total)}`);
+  }
   document.getElementById('m-petty-list').innerHTML=rows.map(([n,v])=>
     `<div style="background:#fff;border:1px solid #ffe7ba;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
       <span>${nm(n)}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
+  document.querySelectorAll('#m-petty-list>div').forEach((el,i)=>{el.classList.add('clickable');el.onclick=ev=>{ev.stopPropagation();goTab('petty',{fp3:rows[i][0]});};});
 }
 
 function billHTML(b,type){
@@ -1138,6 +1144,17 @@ function syncSelects(){
   });
 }
 
+function goTab(t,filters){
+  const btn=[...document.querySelectorAll('.tab')].find(b=>(b.getAttribute('onclick')||'').includes(`'${t}'`));
+  if(!btn)return;
+  // reset list filters so the jump shows what was tapped
+  ['fp2','fc2','fpay2','fs2','fp3'].forEach(id=>{const s=document.getElementById(id);if(s)s.value='';});
+  Object.entries(filters||{}).forEach(([id,v])=>{const s=document.getElementById(id);if(!s)return;
+    if(![...s.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=nm(v);s.appendChild(o);}s.value=v;});
+  switchTab(t,btn);
+  if(t==='expense')renderExpense();
+  btn.closest('.tabs,div').scrollIntoView({behavior:'smooth',block:'start'});
+}
 function switchTab(t,el){
   document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.sec').forEach(e=>e.classList.remove('active'));
