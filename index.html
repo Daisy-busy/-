@@ -183,7 +183,7 @@ input:checked+.slider:before{transform:translateX(18px);}
 .stmt-table{width:100%;font-size:12px;}
 .stmt-table th,.stmt-table td{white-space:nowrap;padding:8px 4px!important;text-align:right;}
 .stmt-table th:first-child,.stmt-table td:first-child{text-align:left;}
-@media(max-width:600px){.stmt-table{font-size:11px;}.stmt-table th,.stmt-table td{padding:7px 3px!important;}}
+@media(max-width:600px){.stmt-table{font-size:10.5px;letter-spacing:-.2px;}.stmt-table th,.stmt-table td{padding:7px 2px!important;}}
 </style>
 </head>
 <body>
@@ -1083,7 +1083,7 @@ function renderSummary(){
       document.getElementById('sum-acc').innerHTML=document.getElementById('sum-pet').innerHTML=`<div class="empty" style="padding:1rem;">${L(`开账日 ${opening.start} 之前的月份没有账户余额`,`No balances before start date ${opening.start}`)}</div>`;}
     else{document.getElementById('sum-stmt-period').textContent=month?month:L(`${opening.start} 起`,`since ${opening.start}`);
       document.getElementById('sum-acc').innerHTML=statementTableHTML(st.acc,st.accT,L('账户','Account'));
-      document.getElementById('sum-pet').innerHTML=statementTableHTML(st.pet,st.petT,L('持有人','Holder'));}
+      document.getElementById('sum-pet').innerHTML=statementTableHTML(st.pet,st.petT,L('持有人','Holder'),true);}
   }else box.style.display='none';
   const filtered=expenses.filter(b=>(!month||(b.date&&b.date.startsWith(month)))&&(!cat||b.category===cat));
   const eT=filtered.reduce((s,b)=>s+toAED(b),0);
@@ -1140,11 +1140,11 @@ function renderExport(){
   if(eList.length&&iList.length)t2+=(lang==='zh'?'本月收支':'Net')+`：AED ${(iT-eT).toFixed(2)}\n`;
   const st=currentUser?.role==='admin'?buildStatement(month):null;
   if(st){
-    const line=r=>`${(r.name==='现金'?'现金':r.name).padEnd(6)} 期初 ${fmtAED(r.open).padStart(11)}  收 ${fmtAED(r.inn).padStart(10)}  支 ${fmtAED(r.out).padStart(10)}  期末 ${fmtAED(r.close).padStart(11)}\n`;
+    const line=r=>`${(r.name==='现金'?'现金':r.name).padEnd(6)} 期初 ${fmtAED(r.open).padStart(11)}  收 ${fmtAED(r.inn).padStart(10)}  支 ${fmtAED(r.out).padStart(10)}  调拨 ${((r.tr>0?'+':r.tr<0?'-':'')+fmtAED(Math.abs(r.tr))).padStart(10)}  期末 ${fmtAED(r.close).padStart(11)}\n`;
     t2+=`\n▌${L('月度对账','Statement')}（${st.from} ~ ${st.to||L('至今','now')}）\n`;
     t2+=L('账户','Accounts')+'\n';st.acc.forEach(r=>t2+=line(r));t2+=line(st.accT);
     t2+=L('备用金','Petty cash')+'\n';st.pet.forEach(r=>t2+=line(r));t2+=line(st.petT);
-    t2+=`${L('期末资金合计','Total funds at close')}：AED ${fmtAED(st.grand)}\n`;
+    t2+=`${L('期末资金合计','Total funds at close')}：AED ${fmtAED(st.grand)}\n${L('调拨 = 你和备用金持有人之间的内部转钱，不算收入或支出','Transfer = money moved internally; not income or spending')}\n`;
   }
   document.getElementById('exp-pre').textContent=t2;
 }
@@ -1555,13 +1555,13 @@ function accFlows(a,f,t){
   const back=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a));
   const exp=a==='未指定'?0:sumAmt(expenses.filter(b=>inRange(b,f,t)&&normPay(b.payment)===a),toAED);
   const give=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a));
-  return{inn:inc+back,out:exp+give};
+  return{inn:inc,out:exp,tr:back-give};
 }
 function pettyFlows(n,f,t){
-  const inn=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver===n&&b.giver!==n));
-  const out=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver===n&&b.receiver!==n))
-           +sumAmt(expenses.filter(b=>inRange(b,f,t)&&b.person===n&&isPettyPay(b.payment)),toAED);
-  return{inn,out};
+  const got=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver===n&&b.giver!==n));
+  const gave=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver===n&&b.receiver!==n));
+  const out=sumAmt(expenses.filter(b=>inRange(b,f,t)&&b.person===n&&isPettyPay(b.payment)),toAED);
+  return{inn:0,out,tr:got-gave};
 }
 /* Month statement: opening / in / out / closing per account and per petty holder.
    m = 'YYYY-MM' or '' (= since start). Returns null for months before the start date. */
@@ -1569,19 +1569,20 @@ function buildStatement(m){
   const S0=opening.start||'2000-01-01';
   const f=m?((m+'-01')<S0?S0:m+'-01'):S0, t=m?nextMonth(m)+'-01':'9999-12-31';
   if(t<=S0)return null;
-  const mk=(name,base,fl)=>{const pre=fl(S0,f),cur=fl(f,t);const op=base+pre.inn-pre.out;return{name,open:op,inn:cur.inn,out:cur.out,close:op+cur.inn-cur.out};};
+  const mk=(name,base,fl)=>{const pre=fl(S0,f),cur=fl(f,t);const op=base+pre.inn-pre.out+pre.tr;return{name,open:op,inn:cur.inn,out:cur.out,tr:cur.tr,close:op+cur.inn-cur.out+cur.tr};};
   const acc=ACCOUNTS.map(a=>mk(a,openingAcc(a),(x,y)=>accFlows(a,x,y)));
   const un=mk('未指定',0,(x,y)=>accFlows('未指定',x,y));if(Math.abs(un.close)>0.004||Math.abs(un.inn)>0.004)acc.push(un);
   const pet=[...PETTY_HOLDERS,'司机'].map(n=>mk(n,openingOf(n),(x,y)=>pettyFlows(n,x,y)));
-  const tot=rows=>rows.reduce((s,r)=>({name:'合计',open:s.open+r.open,inn:s.inn+r.inn,out:s.out+r.out,close:s.close+r.close}),{open:0,inn:0,out:0,close:0});
+  const tot=rows=>rows.reduce((s,r)=>({name:'合计',open:s.open+r.open,inn:s.inn+r.inn,out:s.out+r.out,tr:s.tr+r.tr,close:s.close+r.close}),{open:0,inn:0,out:0,tr:0,close:0});
   return{from:f,to:m?nextMonth(m)+'-01':'',acc,accT:tot(acc),pet,petT:tot(pet),
     grand:acc.concat(pet).reduce((s,r)=>s+r.close,0)};
 }
-function statementTableHTML(rows,total,label){
+function statementTableHTML(rows,total,label,noIn){
   const td=v=>`<td style="text-align:right;${v<0?'color:#cf1322;':''}">${fmtAED(v)}</td>`;
-  return`<table class="sum-table stmt-table"><thead><tr><th>${label}</th><th>${L('期初','Open')}</th><th>${L('收入','In')}</th><th>${L('支出','Out')}</th><th>${L('期末','Close')}</th></tr></thead><tbody>`+
-    rows.map(r=>`<tr><td>${r.name==='现金'?L('现金','Cash'):r.name==='未指定'?L('未指定','Unassigned'):nm(r.name)}</td>${td(r.open)}${td(r.inn)}${td(r.out)}<td style="text-align:right;font-weight:600;${r.close<0?'color:#cf1322;':''}">${fmtAED(r.close)}</td></tr>`).join('')+
-    `<tr style="font-weight:600;border-top:2px solid #eee;"><td>${L('合计','Total')}</td>${td(total.open)}${td(total.inn)}${td(total.out)}${td(total.close)}</tr></tbody></table>`;
+  const tdt=v=>`<td style="text-align:right;color:${Math.abs(v)<0.005?'#bbb':'#8c8c8c'};">${Math.abs(v)<0.005?'0.00':(v>0?'+':'−')+fmtAED(Math.abs(v))}</td>`;
+  return`<table class="sum-table stmt-table"><thead><tr><th>${label}</th><th>${L('期初','Open')}</th>${noIn?'':`<th>${L('收入','In')}</th>`}<th>${L('支出','Out')}</th><th>${L('调拨','Transfer')}</th><th>${L('期末','Close')}</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td>${r.name==='现金'?L('现金','Cash'):r.name==='未指定'?L('未指定','Unassigned'):nm(r.name)}</td>${td(r.open)}${noIn?'':td(r.inn)}${td(r.out)}${tdt(r.tr)}<td style="text-align:right;font-weight:600;${r.close<0?'color:#cf1322;':''}">${fmtAED(r.close)}</td></tr>`).join('')+
+    `<tr style="font-weight:600;border-top:2px solid #eee;"><td>${L('合计','Total')}</td>${td(total.open)}${noIn?'':td(total.inn)}${td(total.out)}${tdt(total.tr)}${td(total.close)}</tr></tbody></table>`;
 }
 function unassignedIncome(){return incomes.filter(b=>afterStart(b)&&!ACCOUNTS.includes(b.account||'')).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
 let opening={start:'2026-11-01',own:0,petty:{},drivers:{}};
@@ -1788,10 +1789,10 @@ function exportExcel(){
   if(!eList.length&&!iList.length&&!st){alert('暂无数据 / No data');return;}
   const wb=XLSX.utils.book_new();
   if(st){
-    const r2=r=>[r.name,+r.open.toFixed(2),+r.inn.toFixed(2),+r.out.toFixed(2),+r.close.toFixed(2)];
-    const aoa=[[`月度对账 Statement  ${st.from} ~ ${st.to||'now'}`],[],['账户 Account','期初 Open','收入 In','支出 Out','期末 Close'],...st.acc.map(r2),r2({...st.accT,name:'账户合计 Total'}),[],
-      ['备用金 Petty','期初 Open','收入 In','支出 Out','期末 Close'],...st.pet.map(r2),r2({...st.petT,name:'备用金合计 Total'}),[],['期末资金合计 Total funds','','','',+st.grand.toFixed(2)]];
-    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:26},{wch:14},{wch:14},{wch:14},{wch:14}];
+    const r2=r=>[r.name,+r.open.toFixed(2),+r.inn.toFixed(2),+r.out.toFixed(2),+r.tr.toFixed(2),+r.close.toFixed(2)];
+    const aoa=[[`月度对账 Statement  ${st.from} ~ ${st.to||'now'}`],[],['账户 Account','期初 Open','收入 In','支出 Out','调拨 Transfer','期末 Close'],...st.acc.map(r2),r2({...st.accT,name:'账户合计 Total'}),[],
+      ['备用金 Petty','期初 Open','收入 In','支出 Out','调拨 Transfer','期末 Close'],...st.pet.map(r2),r2({...st.petT,name:'备用金合计 Total'}),[],['期末资金合计 Total funds','','','','',+st.grand.toFixed(2)],['调拨 = 内部转钱（你↔备用金持有人），不算收入或支出 / Transfer = internal money movement']];
+    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:26},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14}];
     XLSX.utils.book_append_sheet(wb,ws,'对账 Statement');
   }
 
@@ -1866,9 +1867,9 @@ function exportCSV(){
   const st=currentUser?.role==='admin'?buildStatement(month):null;
   if(st){
     rows.push('');rows.push(row([`月度对账 Statement ${st.from} ~ ${st.to||'now'}`]));
-    rows.push(row(['账户/持有人 Account/Holder','期初 Open','收入 In','支出 Out','期末 Close']));
-    [...st.acc,{...st.accT,name:'账户合计 Accounts total'},...st.pet,{...st.petT,name:'备用金合计 Petty total'}].forEach(r=>rows.push(row([r.name,r.open.toFixed(2),r.inn.toFixed(2),r.out.toFixed(2),r.close.toFixed(2)])));
-    rows.push(row(['期末资金合计 Total funds','','','',st.grand.toFixed(2)]));
+    rows.push(row(['账户/持有人 Account/Holder','期初 Open','收入 In','支出 Out','调拨 Transfer','期末 Close']));
+    [...st.acc,{...st.accT,name:'账户合计 Accounts total'},...st.pet,{...st.petT,name:'备用金合计 Petty total'}].forEach(r=>rows.push(row([r.name,r.open.toFixed(2),r.inn.toFixed(2),r.out.toFixed(2),r.tr.toFixed(2),r.close.toFixed(2)])));
+    rows.push(row(['期末资金合计 Total funds','','','','',st.grand.toFixed(2)]));
   }
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['﻿'+rows.join('\n')],{type:'text/csv;charset=utf-8;'}));
