@@ -188,6 +188,9 @@ input:checked+.slider:before{transform:translateX(18px);}
 @media(max-width:600px){.stmt-table{font-size:10.5px;letter-spacing:-.2px;}.stmt-table th,.stmt-table td{padding:7px 2px!important;}}
 .perm-table .btn{white-space:nowrap;}
 .perm-table td,.perm-table th{vertical-align:middle;}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+.chip{font-size:12px;padding:2px 9px;border:1px solid #d9d9d9;border-radius:99px;background:#fafafa;color:#555;cursor:pointer;font-family:inherit;}
+.chip.on{background:#f6ffed;border-color:#95de64;color:#237804;}
 </style>
 </head>
 <body>
@@ -504,8 +507,8 @@ input:checked+.slider:before{transform:translateX(18px);}
     <input type="file" id="file-inp-i" accept="image/*" multiple style="display:none" onchange="handleFile(this,'income')">
     <div class="ai-box" id="ai-box-i"><div class="ai-badge">✨ AI</div><div id="ai-text-i"></div></div>
     <div class="frow-3">
-      <div class="fg"><label class="t-payer">打款人 / Payer *</label><input type="text" id="i-payer" placeholder="打款方"></div>
-      <div class="fg"><label class="t-payee">收款人 / Payee *</label><input type="text" id="i-payee" placeholder="收款方"></div>
+      <div class="fg"><label class="t-payer">打款人 / Payer *</label><input type="text" id="i-payer" placeholder="打款方" oninput="renderIncomeChips()"><div class="chips" id="i-payer-chips"></div></div>
+      <div class="fg"><label class="t-payee">收款人 / Payee *</label><input type="text" id="i-payee" placeholder="收款方" oninput="renderIncomeChips()"><div class="chips" id="i-payee-chips"></div></div>
       <div class="fg"><label class="t-amount-aed">金额（AED）*</label><input type="number" id="i-amount" placeholder="0.00" step="0.01" min="0"></div>
     </div>
     <div class="frow">
@@ -813,6 +816,22 @@ function statusLabel(v){return STATUS_BILINGUAL[v]||v;}
 
 const FLEET_CATS=['汽车加油','汽车维修保养','停车费','高速费','罚款'];
 function ensureCatOption(v){const s=document.getElementById('e-cat');if(v&&![...s.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=catLabel(v);s.appendChild(o);}}
+/* Quick picks for payer / payee, ranked by how often they were used */
+function normPayer(s){return String(s||'').replace(/\s*(转\s*u|转u|u)\s*\d+.*$/i,'').replace(/(现金|还款|转账)$/,'').trim();}
+function payerChoices(){
+  const c={};incomes.forEach(b=>{const n=normPayer(b.payer);if(n&&n.length<=8&&!/\d/.test(n))c[n]=(c[n]||0)+1;});
+  return Object.entries(c).sort((a,b)=>b[1]-a[1]).map(([n])=>n).slice(0,6);
+}
+function payeeChoices(){
+  const base=['徐慧',...PETTY_HOLDERS];const c={};incomes.forEach(b=>{if(b.payee)c[b.payee]=(c[b.payee]||0)+1;});
+  return [...new Set([...Object.entries(c).sort((a,b)=>b[1]-a[1]).map(([n])=>n),...base])].slice(0,6);
+}
+function renderIncomeChips(){
+  const mk=(id,list)=>{const inp=document.getElementById(id),box=document.getElementById(id+'-chips');
+    box.innerHTML=list.map(n=>`<button type="button" class="chip${inp.value===n?' on':''}" data-v="${n}">${nm(n)}</button>`).join('');
+    box.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{inp.value=b.dataset.v;renderIncomeChips();});};
+  mk('i-payer',payerChoices());mk('i-payee',payeeChoices());
+}
 function onIPayChange(){const v=document.getElementById('i-pay').value;const box=document.getElementById('i-account-box');if(box)box.style.display=(ACCOUNTS.includes(v)||v==='转U')?'none':'block';}
 /* USDT is always exchanged into cash first; depositing it is an account transfer */
 function incomeAccount(b){return ACCOUNTS.includes(b.payment)?b.payment:b.payment==='转U'?'现金':(b.account||'');}
@@ -1617,8 +1636,10 @@ async function openIncome(){
   document.getElementById('income-title').textContent=t('add-income-title');
   document.getElementById('income-save-btn').querySelector('span').textContent=t('save-income');
   ['i-payer','i-payee','i-amount','i-note'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('i-payee').value='徐慧';document.getElementById('i-payer').value=payerChoices()[0]||'';
   document.getElementById('i-date').value=today();document.getElementById('i-status').value='已确认';
   document.getElementById('i-pay').value='现金';document.getElementById('i-account').value='现金';onIPayChange();document.getElementById('ai-box-i').style.display='none';
+  renderIncomeChips();
   renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
   document.getElementById('modal-income').classList.add('open');
 }
@@ -1628,7 +1649,7 @@ function editIncome(id){
   editIncomeId=id;currentPhotosI=b.photos?[...b.photos]:[];
   document.getElementById('income-title').textContent=lang==='zh'?'编辑收入':'Edit Income';
   document.getElementById('income-save-btn').querySelector('span').textContent=lang==='zh'?'保存修改':'Save';
-  document.getElementById('i-payer').value=b.payer||'';document.getElementById('i-payee').value=b.payee||'';
+  document.getElementById('i-payer').value=b.payer||'';document.getElementById('i-payee').value=b.payee||'';renderIncomeChips();
   document.getElementById('i-amount').value=b.amount||'';document.getElementById('i-date').value=b.date||'';
   document.getElementById('i-status').value=b.status||'已确认';(()=>{const s=document.getElementById('i-pay'),v=b.payment||'现金';if(![...s.options].some(o=>o.value===v))s.insertAdjacentHTML('beforeend',`<option value="${v}">${v}（旧 / old）</option>`);s.value=v;})();
   document.getElementById('i-account').value=b.account&&ACCOUNTS.includes(b.account)?b.account:'现金';onIPayChange();
