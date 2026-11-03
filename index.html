@@ -269,7 +269,8 @@ input:checked+.slider:before{transform:translateX(18px);}
   </div>
   <div class="metric clickable" id="acc-card" onclick="goTab('expense')" style="margin:-0.5rem 0 1.25rem;display:none;background:#f0f7ff;border-color:#bae0ff;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
-      <div class="ml t-acc-sum" style="margin:0;">账户余额 Accounts</div>
+      <div style="display:flex;align-items:center;gap:8px;"><div class="ml t-acc-sum" style="margin:0;white-space:nowrap;">账户余额</div>
+        <button class="btn btn-s btn-sm" style="padding:2px 8px;font-size:12px;white-space:nowrap;color:#0958d9;border-color:#91caff;" onclick="event.stopPropagation();openXfer()">⇄ <span class="t-xfer-short">互转存现</span></button></div>
       <div style="font-size:12px;color:#888;white-space:nowrap;"><span class="t-total">合计</span> <span class="mv" style="font-size:17px;color:#0958d9;" id="m-acc">0</span></div>
     </div>
     <div id="m-acc-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;"></div>
@@ -332,7 +333,7 @@ input:checked+.slider:before{transform:translateX(18px);}
       <select id="fi-payee" onchange="renderIncome()"><option value="">全部 / All Payees</option></select>
       <select id="fi-acc" onchange="renderIncome()"><option value="">全部 / All Accounts</option><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option><option value="转U">转U / USDT</option></select>
     </div>
-    <div id="xfer-bar" style="display:none;margin:-2px 0 10px;"><button class="btn btn-s btn-sm" onclick="openXfer()">⇄ 账户互转 / 存现 · Transfer</button></div>
+    <div id="xfer-bar" style="display:none;margin:0 0 10px;"><button class="btn btn-s" style="width:100%;border-color:#91caff;color:#0958d9;background:#f0f7ff;" onclick="openXfer()">⇄ 账户互转 / 存现 · Transfer</button></div>
     <div id="income-total" style="font-size:13px;color:#555;margin:-4px 0 10px;"></div>
     <div id="income-list" class="bill-list"><div class="loading">Loading...</div></div>
   </div>
@@ -701,7 +702,7 @@ function nm(n){const v=PETTY_NAMES[n];return lang==='en'&&v?v.split(' / ')[1]:n;
 const T={
   zh:{
     'title':'官邸每月流水账 / Residence Ledger','sub':'支出 · 收入 · 备用金 / Expense · Income · Petty Cash',
-    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','opening':'期初余额','acc-sum':'账户余额 Accounts','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
+    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','opening':'期初余额','acc-sum':'账户余额','xfer-short':'互转存现','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
     'month-filter':'📅 月份 / Month','clear':'清除 / Clear',
     'm-expense':'支出 / Expense（AED）','m-income':'收入 / Income（AED）','m-balance':'结余 / Balance（AED）','m-petty':'备用金 / Petty Cash Balance',
     'tab-bills':'全部','tab-expense':'支出','tab-income':'收入','tab-petty':'备用金','tab-summary':'汇总','tab-export':'导出','tab-admin':'权限',
@@ -726,7 +727,7 @@ const T={
   },
   en:{
     'title':'Residence Monthly Ledger','sub':'Expenses · Income · Petty Cash · AI · Real-time Sync',
-    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','opening':'Opening','acc-sum':'Account Balances','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
+    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','opening':'Opening','acc-sum':'Account Balances','xfer-short':'Transfer','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
     'month-filter':'📅 Month','clear':'Clear',
     'm-expense':'Expense (AED)','m-income':'Income (AED)','m-balance':'Balance (AED)','m-petty':'Petty Cash Balance',
     'tab-bills':'All','tab-expense':'Expense','tab-income':'Income','tab-petty':'Petty Cash','tab-summary':'Summary','tab-export':'Export','tab-admin':'Admin',
