@@ -1042,7 +1042,7 @@ async function loadAll(){
     if(results[2].error)throw results[2].error;
 
     // Normalize payment labels saved by older versions (e.g. '备用金 / Petty Cash' → '备用金')
-    expenses=(results[0].data||[]).map(b=>({...b,payment:normPay(b.payment)}));
+    expenses=(results[0].data||[]).map(b=>({...b,payment:normPay(b.payment),person:/^徐慧/.test(b.person||'')?'徐慧':b.person}));
     incomes=results[1].data||[];
     pettyCash=results[2].data||[];
     if(isAdmin){users=results[3]?.data||[];updatePendingBadge();
@@ -1129,7 +1129,12 @@ function renderMetrics(){
   // Petty cash: cumulative per-person balance (not month-filtered), total = sum held by everyone
   const isAdmin=currentUser?.role==='admin';
   const holders=isAdmin?[...PETTY_HOLDERS,'司机']:[currentUser?.name].filter(Boolean);
-  const rows=holders.map(n=>[n,getPettyBalance(n)]);
+  let rows=holders.filter(n=>n!=='司机').map(n=>[n,getPettyBalance(n)]);
+  if(holders.includes('司机')){
+    if(myDriverId()!=null)rows.push(['司机',getPettyBalance('司机')]);
+    else{fleetDrivers.forEach(d=>rows.push(['drv:'+d.id,driverBalance(d.id)]));
+      const un=getPettyBalance('司机')-fleetDrivers.reduce((s,d)=>s+driverBalance(d.id),0);if(Math.abs(un)>0.004)rows.push(['司机',un]);}
+  }
   const total=rows.reduce((s,[,v])=>s+v,0);
   document.getElementById('m-petty').textContent='AED '+fmtAED(total);
   // Funds on hand: opening (own + everyone's petty cash) + income − expense since start date
@@ -1154,8 +1159,8 @@ function renderMetrics(){
   }
   document.getElementById('m-petty-list').innerHTML=rows.map(([n,v])=>
     `<div style="background:#fff;border:1px solid #ffe7ba;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
-      <span>${holderLabel(n)}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
-  document.querySelectorAll('#m-petty-list>div').forEach((el,i)=>{el.classList.add('clickable');el.onclick=ev=>{ev.stopPropagation();goTab('petty',{fp3:rows[i][0]});};});
+      <span>${String(n).startsWith('drv:')?drvLabel({name:driverNameById(n.slice(4))}):holderLabel(n)}</span><b style="color:${v<0?'#cf1322':v>0?'#389e0d':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
+  document.querySelectorAll('#m-petty-list>div').forEach((el,i)=>{el.classList.add('clickable');el.onclick=ev=>{ev.stopPropagation();goTab('petty',{fp3:String(rows[i][0]).startsWith('drv:')?'司机':rows[i][0]});};});
 }
 
 function billHTML(b,type){
@@ -1235,24 +1240,31 @@ function renderPetty(){
   const fm=document.getElementById('fm3').value,fp=document.getElementById('fp3').value;
   const isAdmin=currentUser.role==='admin';
 
-  // Balance cards - admin sees all members, member sees only self
-  const members=isAdmin?[...PETTY_HOLDERS,'司机']:[currentUser.name];
+  /* 持有人各一张卡；司机按 fleet_drivers 拆成独立账户（不再共用一张「司机」卡） */
+  const myId=myDriverId();
+  const drvCards=fleetDrivers.map(d=>({k:'d',id:d.id,name:driverNameById(d.id)||('#'+d.id),label:drvLabel(d)}));
+  const members=isAdmin
+    ? [...PETTY_HOLDERS.map(n=>({k:'p',name:n})), ...drvCards]
+    : (myId!=null ? drvCards.filter(m=>String(m.id)===String(myId))
+                  : [{k:'p',name:currentUser.name}]);
   const grid=document.getElementById('petty-balance');
-  grid.innerHTML=members.map(name=>{
-    const bal=getPettyBalance(name);
-    const op=openingOf(name),received=pettyIn(name),givenOut=pettyOut(name),spent=pettySpent(name);
-    const[bg,tc]=gc(name);
-    return`<div class="petty-card">
+  const card=(label,iniName,bg,tc,op,received,givenOut,spent,bal)=>`<div class="petty-card">
       <div class="name" style="display:flex;align-items:center;gap:6px;">
-        <span style="width:24px;height:24px;border-radius:50%;background:${bg};color:${tc};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${ini(name)}</span>${holderLabel(name)}
+        <span style="width:24px;height:24px;border-radius:50%;background:${bg};color:${tc};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${ini(iniName)}</span>${label}
       </div>
       ${op?`<div class="row"><span>期初 / Opening</span><span>${fmtAED(op)}</span></div>`:''}
       <div class="row"><span>已收 / In</span><span>${fmtAED(received)}</span></div>
       ${givenOut>0?`<div class="row"><span>转出 / Out</span><span>${fmtAED(givenOut)}</span></div>`:''}
       <div class="row"><span>${t('used')}</span><span>${fmtAED(spent)}</span></div>
       <div class="balance ${bal>0?'balance-pos':bal<0?'balance-neg':'balance-zero'}">${L('余额','Balance')} ${fmtAED(bal)}</div>
-      ${name==='司机'?driverBreakdownHTML():''}
     </div>`;
+  grid.innerHTML=members.map(m=>{
+    if(m.k==='d'){
+      const[bg,tc]=gc(m.name||'司机');
+      return card(`${nm('司机')}·${m.label}`,m.label,bg,tc,driverOpening(m.id),driverIn(m.id),driverOut(m.id),driverSpent(m.id),driverBalance(m.id));
+    }
+    const name=m.name;const[bg,tc]=gc(name);
+    return card(holderLabel(name),name,bg,tc,openingOf(name),pettyIn(name),pettyOut(name),pettySpent(name),getPettyBalance(name));
   }).join('');
 
   // Records - admin sees all, member only sees records where they are receiver
@@ -1265,7 +1277,6 @@ function renderPetty(){
   const el=document.getElementById('petty-list');
   el.innerHTML=list.length?list.map(b=>billHTML(b,'petty')).join(''):`<div class="empty">💵 ${lang==='zh'?'暂无记录':'No records'}</div>`;
 }
-
 function renderSummary(){
   const month=document.getElementById('sum-month').value,cat=document.getElementById('sum-cat').value;
   const box=document.getElementById('sum-stmt');
@@ -1802,7 +1813,7 @@ function driverBreakdownHTML(){
   pettyCash.forEach(b=>{if(!afterStart(b))return;const a=parseFloat(b.amount||0),k=b.driver_name||L('未指定','Unassigned');
     if(b.receiver==='司机'&&b.giver!=='司机')add(k,a);
     if(b.giver==='司机'&&b.receiver!=='司机')add(k,-a);});
-  expenses.forEach(b=>{if(afterStart(b)&&b.person==='司机'&&isPettyPay(b.payment))add(b.driver_name||L('未指定','Unassigned'),-toAED(b));});
+  expenses.forEach(b=>{if(afterStart(b)&&driverCharged(b))add(b.driver_name||L('未指定','Unassigned'),-toAED(b));});
   const rows=Object.entries(m).filter(([,v])=>Math.abs(v)>0.004);
   if(!rows.length)return'';
   return`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #eee;font-size:12px;">`+rows.map(([k,v])=>
@@ -1901,7 +1912,7 @@ function xferHTML(x){
 function openingAcc(a){const o=opening.accounts||{};if(!opening.accounts&&a==='现金')return parseFloat(opening.own)||0;return parseFloat(o[a])||0;}
 function accountBal(a){
   const inc=incomes.filter(b=>afterStart(b)&&incomeAccount(b)===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-  const exp=expenses.filter(b=>afterStart(b)&&!pendingReimb(b)&&normPay(b.payment)===a).reduce((s,b)=>s+toAED(b),0);
+  const exp=expenses.filter(b=>afterStart(b)&&hitsAccount(b)&&normPay(b.payment)===a).reduce((s,b)=>s+toAED(b),0);
   const out=pettyCash.filter(b=>afterStart(b)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   const back=pettyCash.filter(b=>afterStart(b)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   return openingAcc(a)+inc-exp-out+back+xferNet(a);
@@ -1913,14 +1924,15 @@ function accFlows(a,f,t){
   const isA=b=>a==='未指定'?!ACCOUNTS.includes(incomeAccount(b)):incomeAccount(b)===a;
   const inc=sumAmt(incomes.filter(b=>inRange(b,f,t)&&isA(b)));
   const back=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a));
-  const exp=a==='未指定'?0:sumAmt(expenses.filter(b=>inRange(b,f,t)&&!pendingReimb(b)&&normPay(b.payment)===a),toAED);
+  const exp=a==='未指定'?0:sumAmt(expenses.filter(b=>inRange(b,f,t)&&hitsAccount(b)&&normPay(b.payment)===a),toAED);
   const give=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a));
   return{inn:inc,out:exp,tr:back-give+(a==='未指定'?0:xferNet(a,f,t))};
 }
 function pettyFlows(n,f,t){
   const got=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver===n&&b.giver!==n));
   const gave=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver===n&&b.receiver!==n));
-  const out=sumAmt(expenses.filter(b=>inRange(b,f,t)&&!pendingReimb(b)&&pettyOwner(b)===n&&isPettyPay(b.payment)),toAED);
+  const out=n==='司机'?sumAmt(expenses.filter(b=>inRange(b,f,t)&&driverCharged(b)),toAED)
+    :sumAmt(expenses.filter(b=>inRange(b,f,t)&&!pendingReimb(b)&&!driverCharged(b)&&pettyOwner(b)===n&&isPettyPay(b.payment)),toAED);
   return{inn:0,out,tr:got-gave};
 }
 /* Month statement: opening / in / out / closing per account and per petty holder.
@@ -1958,9 +1970,17 @@ function pettyOut(name){return pettyCash.filter(b=>afterStart(b)&&b.giver===name
 function pettyOwner(b){return b.petty_from||b.person;}
 /* Fleet expense someone paid out of pocket and not yet reimbursed: it is a cost, but no account/petty cash has paid it yet.
    (Drivers' own petty-cash spending still follows the fleet balance.) */
+/* Fleet rule: a driver's expense comes off HIS balance unless it was reimbursed (报销) — then it comes off whoever reimbursed it.
+   Manual ledger entries by a driver only touch his balance when paid with petty cash. */
+function settledFleet(b){return b.source==='fleet'&&/已报销/.test(b.note||'');}
+function driverCharged(b){return b.person==='司机'&&(b.source==='fleet'?!settledFleet(b):(isPettyPay(b.payment)&&!b.petty_from));}
+/* Someone else (not a driver) paid out of pocket and is waiting to be reimbursed: a cost, but no account has paid yet */
 function pendingReimb(b){return b.source==='fleet'&&b.status==='待确认'&&b.person!=='司机';}
+/* Does this expense come out of one of Xu Hui's accounts? */
+function hitsAccount(b){return !pendingReimb(b)&&!driverCharged(b);}
 function pendingReimbTotal(){return expenses.filter(b=>afterStart(b)&&pendingReimb(b)).reduce((s,b)=>s+toAED(b),0);}
-function pettySpent(name){return expenses.filter(b=>afterStart(b)&&!pendingReimb(b)&&pettyOwner(b)===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
+function pettySpent(name){if(name==='司机')return expenses.filter(b=>afterStart(b)&&driverCharged(b)).reduce((s,b)=>s+toAED(b),0);
+  return expenses.filter(b=>afterStart(b)&&!pendingReimb(b)&&!driverCharged(b)&&pettyOwner(b)===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
 function onEPayChange(personChanged){
   const box=document.getElementById('e-pf-box'),sel=document.getElementById('e-pf');
   const show=currentUser?.role==='admin'&&isPettyPay(document.getElementById('e-pay').value);
@@ -2008,13 +2028,13 @@ function setPc(id,person,driverId){
   s.value=v;
 }
 function meVal(){return myDriverId()!=null?'drv:'+myDriverId():currentUser.name;}
-function driverBalance(id){
-  const isD=b=>String(b.driver_id)===String(id);
-  return (parseFloat((opening.drivers||{})[id])||0)
-    +sumAmt(pettyCash.filter(b=>afterStart(b)&&isD(b)&&b.receiver==='司机'&&b.giver!=='司机'))
-    -sumAmt(pettyCash.filter(b=>afterStart(b)&&isD(b)&&b.giver==='司机'&&b.receiver!=='司机'))
-    -sumAmt(expenses.filter(b=>afterStart(b)&&isD(b)&&b.person==='司机'&&isPettyPay(b.payment)),toAED);
-}
+function driverOpening(id){return parseFloat((opening.drivers||{})[id])||0;}
+function driverIsD(id){return b=>String(b.driver_id)===String(id);}
+function driverIn(id){return sumAmt(pettyCash.filter(b=>afterStart(b)&&driverIsD(id)(b)&&b.receiver==='司机'&&b.giver!=='司机'));}
+function driverOut(id){return sumAmt(pettyCash.filter(b=>afterStart(b)&&driverIsD(id)(b)&&b.giver==='司机'&&b.receiver!=='司机'));}
+/* 司机自己的备用金支出：未报销的（垫付）不扣；从别人备用金出的（petty_from）也不扣 */
+function driverSpent(id){return sumAmt(expenses.filter(b=>afterStart(b)&&driverIsD(id)(b)&&driverCharged(b)),toAED);}
+function driverBalance(id){return driverOpening(id)+driverIn(id)-driverOut(id)-driverSpent(id);}
 function onPcDriverToggle(keepId){
   const xh=document.getElementById('pc-giver').value==='徐慧'||document.getElementById('pc-receiver').value==='徐慧';
   document.getElementById('pc-account-box').style.display=xh?'block':'none';
