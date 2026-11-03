@@ -76,6 +76,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei
 .tag-罚款{background:#fff1f0;color:#a8071a;}
 .tag-Gas费{background:#f6ffed;color:#135200;}
 .tag-工资{background:#e6f4ff;color:#003a8c;}
+.tag-饮用水{background:#e6fffb;color:#006d75;}.tag-买酒{background:#fff0f6;color:#9e1068;}.tag-水电网费{background:#f0f5ff;color:#1d39c4;}
+.tag-签证政府费用{background:#f9f0ff;color:#531dab;}.tag-接待招待{background:#fff2e8;color:#ad4e00;}.tag-差旅交通{background:#e6f4ff;color:#0958d9;}.tag-其他{background:#f5f5f5;color:#595959;}
 .tag-维修费{background:#fff7e6;color:#7c4a00;}
 .tag-收入,.tag-Income{background:#f6ffed;color:#237804;}
 .tag-备用金,.tag-Petty\ Cash{background:#fffbe6;color:#874d00;}
@@ -785,8 +787,8 @@ function applyLang(){
 }
 
 // Category translations
-const CATS_ZH=['买菜','官邸日常用品','亚马逊采购','家乐福采购','国内采购','汽车加油','汽车维修保养','停车费','固定开销','手续费','餐费','高速费','罚款','Gas费','工资','维修费'];
-const CATS_EN=['Groceries','Household Items','Amazon Order','Carrefour','China Purchase','Fuel','Car Maintenance','Parking','Fixed Cost','Fee','Dining','Toll','Fine','Gas','Salary','Repair'];
+const CATS_ZH=['买菜','饮用水','买酒','官邸日常用品','亚马逊采购','家乐福采购','国内采购','汽车加油','汽车维修保养','停车费','固定开销','水电网费','手续费','签证政府费用','餐费','接待招待','差旅交通','高速费','罚款','Gas费','工资','维修费','其他'];
+const CATS_EN=['Groceries','Drinking Water','Alcohol','Household Items','Amazon Order','Carrefour','China Purchase','Fuel','Car Maintenance','Parking','Fixed Cost','Utilities & Internet','Bank Fee','Visa & Govt Fees','Dining','Hospitality','Travel','Toll','Fine','Gas','Salary','Repair','Other'];
 const CATS_MAP_ZH_EN=Object.fromEntries(CATS_ZH.map((z,i)=>[z,CATS_EN[i]]));
 const CATS_MAP_EN_ZH=Object.fromEntries(CATS_EN.map((e,i)=>[e,CATS_ZH[i]]));
 
@@ -1407,7 +1409,7 @@ async function recognizeWithAI(dataUrl,type,mode){
   const box=document.getElementById(boxId),txt=document.getElementById(txtId);
   box.style.display='block';txt.innerHTML='<span class="pulse">✨ AI...</span>';
   const prompt=mode==='expense'
-    ?'识别收据图片，只返回JSON：{"merchant":"商家","amount":"纯数字","currency":"AED或CNY","date":"YYYY-MM-DD","category":"买菜/官邸日常用品/亚马逊采购/家乐福采购/国内采购/汽车加油/汽车维修保养/停车费/固定开销/手续费/餐费/高速费/罚款/Gas费","note":"备注 / Note"}。识别不到填空字符串。'
+    ?'识别收据图片，只返回JSON：{"merchant":"商家","amount":"纯数字","currency":"AED或CNY","date":"YYYY-MM-DD","category":"'+CATS_ZH.filter(c=>!FLEET_CATS.includes(c)).join('/')+'","note":"备注 / Note"}。识别不到填空字符串。'
     :'识别转账截图，只返回JSON：{"payer":"打款人","payee":"收款人","amount":"纯数字","date":"YYYY-MM-DD","note":"备注 / Note"}。识别不到填空字符串。';
   try{
     const base64=dataUrl.split(',')[1],mediaType=type.startsWith('image/')?type:'image/jpeg';
