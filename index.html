@@ -277,6 +277,7 @@ input:checked+.slider:before{transform:translateX(18px);}
       <div style="font-size:12px;color:#888;white-space:nowrap;"><span class="t-total">合计</span> <span class="mv" style="font-size:17px;color:#0958d9;" id="m-acc">0</span></div>
     </div>
     <div id="m-acc-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;"></div>
+    <div id="m-pending" style="display:none;font-size:12px;color:#cf1322;margin-top:8px;"></div>
   </div>
   <div class="metric petty-metric clickable" onclick="goTab('petty')" style="margin:-0.5rem 0 1.25rem;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
@@ -1115,6 +1116,9 @@ function renderMetrics(){
       `<div style="background:#fff;border:1px solid #d6e8ff;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;gap:6px;font-size:13px;">
         <span>${n==='现金'?L('现金','Cash'):n}</span><b style="color:${v<0?'#cf1322':v>0?'#0958d9':'#888'};white-space:nowrap;">${fmtAED(v)}</b></div>`).join('');
     document.querySelectorAll('#m-acc-list>div').forEach((el,i)=>{el.classList.add('clickable');const a=accRows[i][0];el.onclick=ev=>{ev.stopPropagation();ACCOUNTS.includes(a)?goTab('expense',{fpay2:a}):goTab('income-tab');};});
+    const pend=pendingReimbTotal(),pe=document.getElementById('m-pending');
+    pe.style.display=pend>0.004?'block':'none';
+    pe.textContent=L(`⏳ 还有 AED ${fmtAED(pend)} 别人垫付、等待报销（报销时再从对应账户扣）`,`⏳ AED ${fmtAED(pend)} paid by others, waiting to be reimbursed`);
     const funds=accT+total;
     mbl.textContent=L('结余（现有资金）Balance','Balance (funds on hand)');
     mb.textContent=fmtAED(funds);mb.style.color=funds<0?'#cf1322':'#096dd9';
@@ -1144,7 +1148,7 @@ function billHTML(b,type){
     ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#e6f4ff;padding:1px 6px;border-radius:99px;color:#0958d9;">${payLabel(b.payment||'')}${b.payment==='转U'?' → '+L('现金','Cash'):(!ACCOUNTS.includes(b.payment)&&b.payment!=='转U'&&!b.account?L('（未指定银行）',' (bank?)'):'')}</span>`
     :isPetty
     ?`<span>${b.date||''}</span><span class="tag tag-备用金">${t('tab-petty')}</span>${b.created_by&&b.created_by===b.receiver&&b.created_by!==b.giver?`<span style="font-size:11px;color:#389e0d;">收款人登记 / Recorded by receiver</span>`:''}`
-    :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>${b.petty_from&&b.petty_from!==b.person?`<span style="font-size:11px;background:#fffbe6;color:#ad6800;border:1px solid #ffe58f;padding:0 6px;border-radius:99px;">${L('扣','from')} ${nm(b.petty_from)} ${L('备用金','petty')}</span>`:''}`;
+    :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>${pendingReimb(b)?`<span style="font-size:11px;background:#fff1f0;color:#cf1322;border:1px solid #ffa39e;padding:0 6px;border-radius:99px;">${L('待报销','To reimburse')}</span>`:''}${b.petty_from&&b.petty_from!==b.person?`<span style="font-size:11px;background:#fffbe6;color:#ad6800;border:1px solid #ffe58f;padding:0 6px;border-radius:99px;">${L('扣','from')} ${nm(b.petty_from)} ${L('备用金','petty')}</span>`:''}`;
   const photos=(b.photos&&b.photos.length)?`<div class="bill-photos">${b.photos.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')" loading="lazy">`).join('')}</div>`:'';
   const edf=isInc?`editIncome('${b.id}')`:isPetty?`editPetty('${b.id}')`:(`editExpense('${b.id}')`);
   const dlf=isInc?`delIncome('${b.id}')`:isPetty?`delPetty('${b.id}')`:(`delExpense('${b.id}')`);
@@ -1793,7 +1797,7 @@ function xferHTML(x){
 function openingAcc(a){const o=opening.accounts||{};if(!opening.accounts&&a==='现金')return parseFloat(opening.own)||0;return parseFloat(o[a])||0;}
 function accountBal(a){
   const inc=incomes.filter(b=>afterStart(b)&&incomeAccount(b)===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-  const exp=expenses.filter(b=>afterStart(b)&&normPay(b.payment)===a).reduce((s,b)=>s+toAED(b),0);
+  const exp=expenses.filter(b=>afterStart(b)&&!pendingReimb(b)&&normPay(b.payment)===a).reduce((s,b)=>s+toAED(b),0);
   const out=pettyCash.filter(b=>afterStart(b)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   const back=pettyCash.filter(b=>afterStart(b)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   return openingAcc(a)+inc-exp-out+back+xferNet(a);
@@ -1805,14 +1809,14 @@ function accFlows(a,f,t){
   const isA=b=>a==='未指定'?!ACCOUNTS.includes(incomeAccount(b)):incomeAccount(b)===a;
   const inc=sumAmt(incomes.filter(b=>inRange(b,f,t)&&isA(b)));
   const back=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a));
-  const exp=a==='未指定'?0:sumAmt(expenses.filter(b=>inRange(b,f,t)&&normPay(b.payment)===a),toAED);
+  const exp=a==='未指定'?0:sumAmt(expenses.filter(b=>inRange(b,f,t)&&!pendingReimb(b)&&normPay(b.payment)===a),toAED);
   const give=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a));
   return{inn:inc,out:exp,tr:back-give+(a==='未指定'?0:xferNet(a,f,t))};
 }
 function pettyFlows(n,f,t){
   const got=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver===n&&b.giver!==n));
   const gave=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver===n&&b.receiver!==n));
-  const out=sumAmt(expenses.filter(b=>inRange(b,f,t)&&pettyOwner(b)===n&&isPettyPay(b.payment)),toAED);
+  const out=sumAmt(expenses.filter(b=>inRange(b,f,t)&&!pendingReimb(b)&&pettyOwner(b)===n&&isPettyPay(b.payment)),toAED);
   return{inn:0,out,tr:got-gave};
 }
 /* Month statement: opening / in / out / closing per account and per petty holder.
@@ -1848,7 +1852,11 @@ function pettyIn(name){return pettyCash.filter(b=>afterStart(b)&&b.receiver===na
 function pettyOut(name){return pettyCash.filter(b=>afterStart(b)&&b.giver===name&&b.receiver!==name).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
 /* Whose petty cash a 备用金 expense is taken from (admin can charge someone else's petty cash) */
 function pettyOwner(b){return b.petty_from||b.person;}
-function pettySpent(name){return expenses.filter(b=>afterStart(b)&&pettyOwner(b)===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
+/* Fleet expense someone paid out of pocket and not yet reimbursed: it is a cost, but no account/petty cash has paid it yet.
+   (Drivers' own petty-cash spending still follows the fleet balance.) */
+function pendingReimb(b){return b.source==='fleet'&&b.status==='待确认'&&b.person!=='司机';}
+function pendingReimbTotal(){return expenses.filter(b=>afterStart(b)&&pendingReimb(b)).reduce((s,b)=>s+toAED(b),0);}
+function pettySpent(name){return expenses.filter(b=>afterStart(b)&&!pendingReimb(b)&&pettyOwner(b)===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
 function onEPayChange(personChanged){
   const box=document.getElementById('e-pf-box'),sel=document.getElementById('e-pf');
   const show=currentUser?.role==='admin'&&isPettyPay(document.getElementById('e-pay').value);
