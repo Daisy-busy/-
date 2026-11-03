@@ -445,7 +445,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     </div>
     <div class="frow">
       <div class="fg"><label class="t-person">消费人 / Person *</label>
-        <select id="e-person"><option value="">请选择 / Select</option>
+        <select id="e-person" onchange="onEPayChange(true)"><option value="">请选择 / Select</option>
           <option value="刘承林">刘承林 / Liu Chenglin</option><option value="保姆">保姆 / Nanny</option><option value="徐慧">徐慧 / Xu Hui</option><option value="司机">司机 / Driver</option><option value="杨文辉">杨文辉 / Yang Wenhui</option>
         </select>
       </div>
@@ -469,8 +469,13 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div class="frow">
       <div class="fg"><label class="t-date">日期 / Date</label><input type="date" id="e-date"></div>
       <div class="fg"><label class="t-payment">支付方式 / Payment</label>
-        <select id="e-pay"><option>WIO</option><option>FAB</option><option>NBD</option><option value="现金">现金 / Cash</option><option value="备用金">备用金 / Petty Cash</option></select>
+        <select id="e-pay" onchange="onEPayChange()"><option>WIO</option><option>FAB</option><option>NBD</option><option value="现金">现金 / Cash</option><option value="备用金">备用金 / Petty Cash</option></select>
       </div>
+    </div>
+    <div class="fg" id="e-pf-box" style="display:none;background:#fffbe6;border:1px solid #ffe58f;border-radius:8px;padding:8px 10px;">
+      <label>扣谁的备用金 / Whose petty cash pays *</label>
+      <select id="e-pf"></select>
+      <div style="font-size:11px;color:#8c6d1f;margin-top:4px;">例：保姆把钱给 Lily 付账 → 选「保姆」，经手人写在备注里<br>e.g. Nanny gave cash to Lily to pay a bill → choose Nanny</div>
     </div>
     <div class="frow">
       <div class="fg"><label class="t-status">状态 / Status</label><select id="e-status"><option value="已确认">已确认 / Confirmed</option><option value="待确认">待确认 / Pending</option></select></div>
@@ -956,7 +961,7 @@ async function loadAll(){
   try{
     // Run all queries in parallel
     let eq=sb.from('expenses').select('*').order('date',{ascending:false});
-    if(!canAll)eq=eq.eq('person',currentUser.name);
+    if(!canAll)eq=myDriverId()!=null?eq.eq('person',currentUser.name):eq.or(`person.eq.${currentUser.name},petty_from.eq.${currentUser.name}`);
     if(!canAll&&myDriverId()!=null)eq=eq.eq('driver_id',myDriverId());
 
     let iq=sb.from('incomes').select('*').order('date',{ascending:false});
@@ -1100,7 +1105,7 @@ function billHTML(b,type){
   const isCNY=!isInc&&!isPetty&&b.currency==='CNY';
   const aedAmt=isInc||isPetty?parseFloat(b.amount||0):toAED(b);
   const isAdmin=currentUser?.role==='admin';
-  const canEdit=isAdmin||(b.person===currentUser?.name)||(b.payee===currentUser?.name)||(b.receiver===currentUser?.name)||(b.created_by===currentUser?.name);
+  const canEdit=isAdmin||(b.person===currentUser?.name&&!b.petty_from)||(b.payee===currentUser?.name)||(b.receiver===currentUser?.name)||(b.created_by===currentUser?.name);
   let amtHTML;
   if(isInc||isPetty) amtHTML=`<div class="bill-amt ${isInc?'amt-income':'amt-petty'}">AED ${fmtAED(aedAmt)}</div>`;
   else if(isCNY) amtHTML=`<div class="bill-amt">¥ ${fmtAED(parseFloat(b.amount||0))}</div><div class="bill-amt-aed">≈ AED ${fmtAED(aedAmt)}</div>`;
@@ -1110,7 +1115,7 @@ function billHTML(b,type){
     ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#e6f4ff;padding:1px 6px;border-radius:99px;color:#0958d9;">${payLabel(b.payment||'')}${b.payment==='转U'?' → '+L('现金','Cash'):(!ACCOUNTS.includes(b.payment)&&b.payment!=='转U'&&!b.account?L('（未指定银行）',' (bank?)'):'')}</span>`
     :isPetty
     ?`<span>${b.date||''}</span><span class="tag tag-备用金">${t('tab-petty')}</span>${b.created_by&&b.created_by===b.receiver&&b.created_by!==b.giver?`<span style="font-size:11px;color:#389e0d;">收款人登记 / Recorded by receiver</span>`:''}`
-    :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>`;
+    :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>${b.petty_from&&b.petty_from!==b.person?`<span style="font-size:11px;background:#fffbe6;color:#ad6800;border:1px solid #ffe58f;padding:0 6px;border-radius:99px;">${L('扣','from')} ${nm(b.petty_from)} ${L('备用金','petty')}</span>`:''}`;
   const photos=(b.photos&&b.photos.length)?`<div class="bill-photos">${b.photos.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')" loading="lazy">`).join('')}</div>`:'';
   const edf=isInc?`editIncome('${b.id}')`:isPetty?`editPetty('${b.id}')`:(`editExpense('${b.id}')`);
   const dlf=isInc?`delIncome('${b.id}')`:isPetty?`delPetty('${b.id}')`:(`delExpense('${b.id}')`);
@@ -1514,6 +1519,7 @@ async function openAdd(){
   document.getElementById('e-date').value=today();document.getElementById('e-pay').value='WIO';
   document.getElementById('e-status').value='已确认';document.getElementById('ai-box-e').style.display='none';
   document.getElementById('salary-rows').innerHTML='';onCatChange();
+  document.getElementById('e-pf').innerHTML='';onEPayChange();
   renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');
   document.getElementById('modal-expense').classList.add('open');
 }
@@ -1529,6 +1535,7 @@ function editExpense(id){
   document.getElementById('e-date').value=b.date||'';document.getElementById('e-pay').value=b.payment||'WIO';
   document.getElementById('e-status').value=b.status||'已确认';document.getElementById('e-note').value=b.note||'';
   document.getElementById('ai-box-e').style.display='none';onAmountChange();
+  document.getElementById('e-pf').innerHTML='';onEPayChange();if(b.petty_from)document.getElementById('e-pf').value=b.petty_from;
   // Payroll: show saved breakdown; old salary records without one keep their amount untouched
   document.getElementById('salary-rows').innerHTML='';
   if(b.category==='工资'){
@@ -1546,7 +1553,8 @@ async function saveExpense(){
   if(!merchant||!amount||!person){alert(lang==='zh'?'请填写商家、金额和消费人':'Please fill merchant, amount and person');return;}
   let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)).join('\n').trim();
   const cat=document.getElementById('e-cat').value;
-  if(!editExpenseId&&cat!=='工资'){
+  const chargedElsewhere=document.getElementById('e-pf-box').style.display!=='none'&&document.getElementById('e-pf').value&&document.getElementById('e-pf').value!==person;
+  if(!editExpenseId&&cat!=='工资'&&!chargedElsewhere){
     const to=matchPerson(merchant+' '+note,person);
     if(to&&confirm(lang==='zh'
       ?`这笔看起来是给「${to.label}」的钱。\n家里人之间给钱属于备用金流转，不算支出。\n\n点「确定」改为备用金发放；点「取消」仍按支出保存。`
@@ -1577,6 +1585,8 @@ async function saveExpense(){
     status:document.getElementById('e-status').value,payment:document.getElementById('e-pay').value,
     note,photos:currentPhotosE,created_by:currentUser.name};
   if(person==='司机'&&myDriverId()!=null){row.driver_id=myDriverId();row.driver_name=driverNameById(myDriverId())||null;}
+  if(document.getElementById('e-pf-box').style.display!=='none'&&isPettyPay(row.payment)){const pf=document.getElementById('e-pf').value;row.petty_from=pf&&pf!==person?pf:null;}
+  else if(isPettyPay(row.payment)===false)row.petty_from=null;
   if(editExpenseId){
     const{error}=await sb.from('expenses').update(row).eq('id',editExpenseId);
     if(error){alert('保存失败：'+error.message);return;}
@@ -1771,7 +1781,7 @@ function accFlows(a,f,t){
 function pettyFlows(n,f,t){
   const got=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver===n&&b.giver!==n));
   const gave=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver===n&&b.receiver!==n));
-  const out=sumAmt(expenses.filter(b=>inRange(b,f,t)&&b.person===n&&isPettyPay(b.payment)),toAED);
+  const out=sumAmt(expenses.filter(b=>inRange(b,f,t)&&pettyOwner(b)===n&&isPettyPay(b.payment)),toAED);
   return{inn:0,out,tr:got-gave};
 }
 /* Month statement: opening / in / out / closing per account and per petty holder.
@@ -1805,7 +1815,18 @@ function openingOf(name){
 }
 function pettyIn(name){return pettyCash.filter(b=>afterStart(b)&&b.receiver===name).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
 function pettyOut(name){return pettyCash.filter(b=>afterStart(b)&&b.giver===name&&b.receiver!==name).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
-function pettySpent(name){return expenses.filter(b=>afterStart(b)&&b.person===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
+/* Whose petty cash a 备用金 expense is taken from (admin can charge someone else's petty cash) */
+function pettyOwner(b){return b.petty_from||b.person;}
+function pettySpent(name){return expenses.filter(b=>afterStart(b)&&pettyOwner(b)===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
+function onEPayChange(personChanged){
+  const box=document.getElementById('e-pf-box'),sel=document.getElementById('e-pf');
+  const show=currentUser?.role==='admin'&&isPettyPay(document.getElementById('e-pay').value);
+  box.style.display=show?'block':'none';if(!show)return;
+  const person=document.getElementById('e-person').value;
+  const cur=personChanged||!sel.options.length?'':sel.value;
+  sel.innerHTML=PETTY_HOLDERS.map(n=>`<option value="${n}">${PETTY_NAMES[n]||n}</option>`).join('');
+  sel.value=cur||(PETTY_HOLDERS.includes(person)?person:(PETTY_HOLDERS.includes('保姆')?'保姆':PETTY_HOLDERS[0]||''));
+}
 function openOpening(){
   document.getElementById('op-start').value=opening.start||'2026-11-01';
   const inp=(id,label,val)=>`<div style="display:grid;grid-template-columns:40% 1fr;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;"><span style="color:#555;">${label}</span><input type="number" step="0.01" id="${id}" value="${val||''}" placeholder="0.00" style="width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;border:1px solid #e5e5e5;border-radius:8px;font-family:inherit;font-size:14px;"></div>`;
@@ -2087,10 +2108,10 @@ function exportCSV(){
   const{eList,iList,pList,month}=getExportLists();
   const q=v=>{const s=v==null?'':String(v);return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
   const row=a=>a.map(q).join(',');
-  const rows=[row(['类型 Type','日期 Date','商家/打款人 Merchant/Payer','原始金额 Amount','币种 Currency','AED','消费人/收款人 Person/Payee','司机 Driver','类型 Category','支付方式 Payment','账户 Account','状态 Status','备注 Note','图片 Photos'])];
-  eList.forEach(b=>rows.push(row(['支出 Expense',b.date,b.merchant,b.amount,b.currency||'AED',toAED(b).toFixed(2),b.person,b.driver_name||'',b.category,b.payment||'',ACCOUNTS.includes(normPay(b.payment))?normPay(b.payment):'',b.status,b.note||'',(b.photos||[]).filter(p=>String(p).startsWith('http')).join(' | ')])));
-  iList.forEach(b=>rows.push(row(['收入 Income',b.date,b.payer,b.amount,'AED',parseFloat(b.amount||0).toFixed(2),b.payee,'','收入 Income',b.payment||'',b.account||'',b.status,b.note||'',(b.photos||[]).filter(p=>String(p).startsWith('http')).join(' | ')])));
-  pList.forEach(b=>rows.push(row(['备用金 Petty',b.date,b.giver,b.amount,'AED',parseFloat(b.amount||0).toFixed(2),b.receiver,b.driver_name||'','备用金 Petty Cash','',b.account||'','',b.note||'',''])));
+  const rows=[row(['类型 Type','日期 Date','商家/打款人 Merchant/Payer','原始金额 Amount','币种 Currency','AED','消费人/收款人 Person/Payee','司机 Driver','类型 Category','支付方式 Payment','账户 Account','扣谁备用金 Petty from','状态 Status','备注 Note','图片 Photos'])];
+  eList.forEach(b=>rows.push(row(['支出 Expense',b.date,b.merchant,b.amount,b.currency||'AED',toAED(b).toFixed(2),b.person,b.driver_name||'',b.category,b.payment||'',ACCOUNTS.includes(normPay(b.payment))?normPay(b.payment):'',isPettyPay(b.payment)?pettyOwner(b):'',b.status,b.note||'',(b.photos||[]).filter(p=>String(p).startsWith('http')).join(' | ')])));
+  iList.forEach(b=>rows.push(row(['收入 Income',b.date,b.payer,b.amount,'AED',parseFloat(b.amount||0).toFixed(2),b.payee,'','收入 Income',b.payment||'',incomeAccount(b),'',b.status,b.note||'',(b.photos||[]).filter(p=>String(p).startsWith('http')).join(' | ')])));
+  pList.forEach(b=>rows.push(row(['备用金 Petty',b.date,b.giver,b.amount,'AED',parseFloat(b.amount||0).toFixed(2),b.receiver,b.driver_name||'','备用金 Petty Cash','',b.account||'','','',b.note||'',''])));
   const st=currentUser?.role==='admin'?buildStatement(month):null;
   if(st){
     rows.push('');rows.push(row([`月度对账 Statement ${st.from} ~ ${st.to||'now'}`]));
