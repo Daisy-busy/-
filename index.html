@@ -328,7 +328,9 @@ input:checked+.slider:before{transform:translateX(18px);}
       <select id="fm2" onchange="renderIncome()"><option value="">全部 / All Months</option></select>
       <select id="fi-payer" onchange="renderIncome()"><option value="">全部 / All Payers</option></select>
       <select id="fi-payee" onchange="renderIncome()"><option value="">全部 / All Payees</option></select>
+      <select id="fi-acc" onchange="renderIncome()"><option value="">全部 / All Accounts</option><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option><option value="转U">转U / USDT</option></select>
     </div>
+    <div id="income-total" style="font-size:13px;color:#555;margin:-4px 0 10px;"></div>
     <div id="income-list" class="bill-list"><div class="loading">Loading...</div></div>
   </div>
 
@@ -499,11 +501,11 @@ input:checked+.slider:before{transform:translateX(18px);}
     </div>
     <div class="frow">
       <div class="fg"><label class="t-date">日期 / Date</label><input type="date" id="i-date"></div>
-      <div class="fg"><label class="t-pay-method">收款方式 / Method</label><select id="i-pay"><option value="现金">现金 / Cash</option><option value="转账">转账 / Transfer</option><option value="转U">转U / USDT</option></select></div>
+      <div class="fg"><label>收款方式 / Received via *</label><select id="i-pay" onchange="onIPayChange()"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option><option value="转U">转U / USDT</option></select></div>
     </div>
     <div class="frow">
       <div class="fg"><label class="t-status">状态 / Status</label><select id="i-status"><option value="已确认">已确认 / Confirmed</option><option value="待确认">待确认 / Pending</option></select></div>
-      <div class="fg"><label>到账账户 / Into account *</label><select id="i-account"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
+      <div class="fg" id="i-account-box" style="display:none;"><label>转U 换成后进哪个账户 / USDT ended up in</label><select id="i-account"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
     </div>
     <div class="fg" style="margin-bottom:0;"><label class="t-note">备注 / Note</label><textarea id="i-note" rows="2"></textarea></div>
     <div class="actions">
@@ -782,6 +784,8 @@ function statusLabel(v){return STATUS_BILINGUAL[v]||v;}
 
 const FLEET_CATS=['汽车加油','汽车维修保养','停车费','高速费','罚款'];
 function ensureCatOption(v){const s=document.getElementById('e-cat');if(v&&![...s.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=catLabel(v);s.appendChild(o);}}
+function onIPayChange(){const v=document.getElementById('i-pay').value;const box=document.getElementById('i-account-box');if(box)box.style.display=ACCOUNTS.includes(v)?'none':'block';}
+function incomeAccount(b){return ACCOUNTS.includes(b.payment)?b.payment:(b.account||'');}
 function rebuildDropdowns(){
   // Always bilingual options
   const catOpts=CATS_ZH.map((z,i)=>`<option value="${z}">${z} / ${CATS_EN[i]}</option>`).join('');
@@ -815,8 +819,9 @@ function rebuildDropdowns(){
   const ipay=document.getElementById('i-pay');
   if(ipay){
     const v=ipay.value;
-    ipay.innerHTML=['现金 / Cash','转账 / Transfer','转U / USDT'].map((l,i)=>`<option value="${['现金','转账','转U'][i]}">${l}</option>`).join('');
-    ipay.value=v||'现金';
+    ipay.innerHTML='<option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option><option value="转U">转U / USDT</option>';
+    if(v&&![...ipay.options].some(o=>o.value===v))ipay.insertAdjacentHTML('beforeend',`<option value="${v}">${v}（旧 / old）</option>`);
+    ipay.value=v||'现金';onIPayChange();
   }
 }
 
@@ -1079,7 +1084,7 @@ function billHTML(b,type){
   else amtHTML=`<div class="bill-amt">AED ${fmtAED(aedAmt)}</div>`;
   const statusLabel=b.status==='已确认'?t('status-confirmed'):b.status==='待确认'?t('status-pending'):b.status||'';
   const meta=isInc
-    ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${b.payment||''}</span>`
+    ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#e6f4ff;padding:1px 6px;border-radius:99px;color:#0958d9;">${payLabel(b.payment||'')}${b.payment==='转U'&&b.account?' → '+payLabel(b.account):(!ACCOUNTS.includes(b.payment)&&b.payment!=='转U'&&!b.account?L('（未指定银行）',' (bank?)'):'')}</span>`
     :isPetty
     ?`<span>${b.date||''}</span><span class="tag tag-备用金">${t('tab-petty')}</span>${b.created_by&&b.created_by===b.receiver&&b.created_by!==b.giver?`<span style="font-size:11px;color:#389e0d;">收款人登记 / Recorded by receiver</span>`:''}`
     :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>`;
@@ -1125,7 +1130,11 @@ function renderExpense(){
 
 function renderIncome(){
   const fm=document.getElementById('fm2').value,payer=document.getElementById('fi-payer').value,payee=document.getElementById('fi-payee').value;
-  const list=incomes.filter(b=>(!fm||(b.date&&b.date.startsWith(fm)))&&(!payer||b.payer===payer)&&(!payee||b.payee===payee)&&matchSearch(b,'income'));
+  const acc=document.getElementById('fi-acc').value;
+  const list=incomes.filter(b=>(!fm||(b.date&&b.date.startsWith(fm)))&&(!payer||b.payer===payer)&&(!payee||b.payee===payee)&&(!acc||(acc==='转U'?b.payment==='转U':incomeAccount(b)===acc))&&matchSearch(b,'income'));
+  const byAcc={};list.forEach(b=>{const k=b.payment==='转U'?'转U':(incomeAccount(b)||L('未指定','Unassigned'));byAcc[k]=(byAcc[k]||0)+parseFloat(b.amount||0);});
+  const tot=list.reduce((s,b)=>s+parseFloat(b.amount||0),0);
+  document.getElementById('income-total').innerHTML=list.length?`${L('合计','Total')} <b style="color:#389e0d;">AED ${fmtAED(tot)}</b>`+(Object.keys(byAcc).length>1?' · '+Object.entries(byAcc).map(([k,v])=>`${k==='现金'?L('现金','Cash'):k} ${fmtAED(v)}`).join(' · '):''):'';
   const el=document.getElementById('income-list');
   const q=getSearch();
   el.innerHTML=list.length?list.map(b=>billHTML(b,'income')).join(''):`<div class="empty">💰 ${q?(lang==='zh'?`未找到「${q}」`:(`No results for "${q}"`)):lang==='zh'?'暂无收入':'No income'}</div>`;
@@ -1275,7 +1284,7 @@ function goTab(t,filters){
   const btn=[...document.querySelectorAll('.tab')].find(b=>(b.getAttribute('onclick')||'').includes(`'${t}'`));
   if(!btn)return;
   // reset list filters so the jump shows what was tapped
-  ['fp2','fc2','fpay2','fs2','fp3'].forEach(id=>{const s=document.getElementById(id);if(s)s.value='';});
+  ['fp2','fc2','fpay2','fs2','fp3','fi-acc'].forEach(id=>{const s=document.getElementById(id);if(s)s.value='';});
   Object.entries(filters||{}).forEach(([id,v])=>{const s=document.getElementById(id);if(!s)return;
     if(![...s.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=nm(v);s.appendChild(o);}s.value=v;});
   switchTab(t,btn);
@@ -1570,7 +1579,7 @@ async function openIncome(){
   document.getElementById('income-save-btn').querySelector('span').textContent=t('save-income');
   ['i-payer','i-payee','i-amount','i-note'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('i-date').value=today();document.getElementById('i-status').value='已确认';
-  document.getElementById('i-pay').value='现金';document.getElementById('i-account').value='现金';document.getElementById('ai-box-i').style.display='none';
+  document.getElementById('i-pay').value='现金';document.getElementById('i-account').value='现金';onIPayChange();document.getElementById('ai-box-i').style.display='none';
   renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
   document.getElementById('modal-income').classList.add('open');
 }
@@ -1582,8 +1591,8 @@ function editIncome(id){
   document.getElementById('income-save-btn').querySelector('span').textContent=lang==='zh'?'保存修改':'Save';
   document.getElementById('i-payer').value=b.payer||'';document.getElementById('i-payee').value=b.payee||'';
   document.getElementById('i-amount').value=b.amount||'';document.getElementById('i-date').value=b.date||'';
-  document.getElementById('i-status').value=b.status||'已确认';document.getElementById('i-pay').value=b.payment||'现金';
-  document.getElementById('i-account').value=b.account||'现金';
+  document.getElementById('i-status').value=b.status||'已确认';(()=>{const s=document.getElementById('i-pay'),v=b.payment||'现金';if(![...s.options].some(o=>o.value===v))s.insertAdjacentHTML('beforeend',`<option value="${v}">${v}（旧 / old）</option>`);s.value=v;})();
+  document.getElementById('i-account').value=b.account&&ACCOUNTS.includes(b.account)?b.account:'现金';onIPayChange();
   document.getElementById('i-note').value=b.note||'';document.getElementById('ai-box-i').style.display='none';
   renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
   document.getElementById('modal-income').classList.add('open');
@@ -1593,7 +1602,8 @@ async function saveIncome(){
   const payer=document.getElementById('i-payer').value.trim(),payee=document.getElementById('i-payee').value.trim(),amount=document.getElementById('i-amount').value;
   if(!payer||!payee||!amount){alert(lang==='zh'?'请填写打款人、收款人和金额':'Please fill payer, payee and amount');return;}
   const row={payer,payee,amount:parseFloat(amount),date:document.getElementById('i-date').value,
-    status:document.getElementById('i-status').value,payment:document.getElementById('i-pay').value,account:document.getElementById('i-account').value,
+    status:document.getElementById('i-status').value,payment:document.getElementById('i-pay').value,
+    account:ACCOUNTS.includes(document.getElementById('i-pay').value)?document.getElementById('i-pay').value:document.getElementById('i-account').value,
     note:document.getElementById('i-note').value.trim(),photos:currentPhotosI,created_by:currentUser.name};
   if(editIncomeId){
     const{error}=await sb.from('incomes').update(row).eq('id',editIncomeId);
@@ -1677,7 +1687,7 @@ const PETTY_HOLDERS=['刘承林','保姆','杨文辉'];
 const ACCOUNTS=['现金','WIO','FAB','NBD'];
 function openingAcc(a){const o=opening.accounts||{};if(!opening.accounts&&a==='现金')return parseFloat(opening.own)||0;return parseFloat(o[a])||0;}
 function accountBal(a){
-  const inc=incomes.filter(b=>afterStart(b)&&(b.account||'')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
+  const inc=incomes.filter(b=>afterStart(b)&&incomeAccount(b)===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   const exp=expenses.filter(b=>afterStart(b)&&normPay(b.payment)===a).reduce((s,b)=>s+toAED(b),0);
   const out=pettyCash.filter(b=>afterStart(b)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   const back=pettyCash.filter(b=>afterStart(b)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
@@ -1687,7 +1697,7 @@ function nextMonth(m){const[y,mm]=m.split('-').map(Number);return mm===12?`${y+1
 function inRange(b,f,t){return !!b.date&&b.date>=f&&b.date<t;}
 const sumAmt=(arr,fn)=>arr.reduce((s,b)=>s+(fn?fn(b):parseFloat(b.amount||0)),0);
 function accFlows(a,f,t){
-  const isA=b=>a==='未指定'?!ACCOUNTS.includes(b.account||''):(b.account||'')===a;
+  const isA=b=>a==='未指定'?!ACCOUNTS.includes(incomeAccount(b)):incomeAccount(b)===a;
   const inc=sumAmt(incomes.filter(b=>inRange(b,f,t)&&isA(b)));
   const back=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a));
   const exp=a==='未指定'?0:sumAmt(expenses.filter(b=>inRange(b,f,t)&&normPay(b.payment)===a),toAED);
@@ -1721,7 +1731,7 @@ function statementTableHTML(rows,total,label,noIn){
     rows.map(r=>`<tr><td>${r.name==='现金'?L('现金','Cash'):r.name==='未指定'?L('未指定','Unassigned'):nm(r.name)}</td>${td(r.open)}${noIn?'':td(r.inn)}${td(r.out)}${tdt(r.tr)}<td style="text-align:right;font-weight:600;${r.close<0?'color:#cf1322;':''}">${fmtAED(r.close)}</td></tr>`).join('')+
     `<tr style="font-weight:600;border-top:2px solid #eee;"><td>${L('合计','Total')}</td>${td(total.open)}${noIn?'':td(total.inn)}${td(total.out)}${tdt(total.tr)}${td(total.close)}</tr></tbody></table>`;
 }
-function unassignedIncome(){return incomes.filter(b=>afterStart(b)&&!ACCOUNTS.includes(b.account||'')).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
+function unassignedIncome(){return incomes.filter(b=>afterStart(b)&&!ACCOUNTS.includes(incomeAccount(b))).reduce((s,b)=>s+parseFloat(b.amount||0),0);}
 let opening={start:'2026-11-01',own:0,petty:{},drivers:{}};
 function afterStart(b){return !opening.start||(!!b.date&&b.date>=opening.start);}
 function openingOf(name){
