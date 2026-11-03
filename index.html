@@ -330,6 +330,7 @@ input:checked+.slider:before{transform:translateX(18px);}
       <select id="fi-payee" onchange="renderIncome()"><option value="">全部 / All Payees</option></select>
       <select id="fi-acc" onchange="renderIncome()"><option value="">全部 / All Accounts</option><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option><option value="转U">转U / USDT</option></select>
     </div>
+    <div id="xfer-bar" style="display:none;margin:-2px 0 10px;"><button class="btn btn-s btn-sm" onclick="openXfer()">⇄ 账户互转 / 存现 · Transfer</button></div>
     <div id="income-total" style="font-size:13px;color:#555;margin:-4px 0 10px;"></div>
     <div id="income-list" class="bill-list"><div class="loading">Loading...</div></div>
   </div>
@@ -505,7 +506,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     </div>
     <div class="frow">
       <div class="fg"><label class="t-status">状态 / Status</label><select id="i-status"><option value="已确认">已确认 / Confirmed</option><option value="待确认">待确认 / Pending</option></select></div>
-      <div class="fg" id="i-account-box" style="display:none;"><label>转U 换成后进哪个账户 / USDT ended up in</label><select id="i-account"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
+      <div class="fg" id="i-account-box" style="display:none;"><label>到账账户 / Into account</label><select id="i-account"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
     </div>
     <div class="fg" style="margin-bottom:0;"><label class="t-note">备注 / Note</label><textarea id="i-note" rows="2"></textarea></div>
     <div class="actions">
@@ -516,6 +517,26 @@ input:checked+.slider:before{transform:translateX(18px);}
 </div>
 
 <!-- 备用金弹窗 -->
+<div class="overlay" id="modal-xfer">
+  <div class="modal" style="width:400px;">
+    <div class="mhd"><h3 id="xfer-title">账户互转 / Account Transfer</h3><button class="close-btn" onclick="closeModals()">×</button></div>
+    <div style="font-size:12px;color:#888;margin-bottom:12px;">存现金进银行、从银行取现、两张卡之间转钱，都在这里记。不算收入也不算支出。<br>Deposit cash, withdraw cash or move money between cards. Not income or spending.</div>
+    <div class="frow">
+      <div class="fg"><label>从 / From *</label><select id="x-from"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
+      <div class="fg"><label>到 / To *</label><select id="x-to"><option value="现金">现金 / Cash</option><option value="WIO" selected>WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label>金额（AED）*</label><input type="number" id="x-amount" step="0.01" min="0" placeholder="0.00"></div>
+      <div class="fg"><label>日期 / Date</label><input type="date" id="x-date"></div>
+    </div>
+    <div class="fg"><label>备注 / Note</label><input type="text" id="x-note" placeholder="例：U 换的现金存入 WIO"></div>
+    <div class="actions">
+      <button class="btn btn-s" onclick="closeModals()">取消 / Cancel</button>
+      <button class="btn btn-p" onclick="saveXfer()">保存 / Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-opening">
   <div class="modal" style="width:420px;">
     <div class="mhd"><h3>期初余额 / Opening Balances</h3><button class="close-btn" onclick="closeModals()">×</button></div>
@@ -784,8 +805,9 @@ function statusLabel(v){return STATUS_BILINGUAL[v]||v;}
 
 const FLEET_CATS=['汽车加油','汽车维修保养','停车费','高速费','罚款'];
 function ensureCatOption(v){const s=document.getElementById('e-cat');if(v&&![...s.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=catLabel(v);s.appendChild(o);}}
-function onIPayChange(){const v=document.getElementById('i-pay').value;const box=document.getElementById('i-account-box');if(box)box.style.display=ACCOUNTS.includes(v)?'none':'block';}
-function incomeAccount(b){return ACCOUNTS.includes(b.payment)?b.payment:(b.account||'');}
+function onIPayChange(){const v=document.getElementById('i-pay').value;const box=document.getElementById('i-account-box');if(box)box.style.display=(ACCOUNTS.includes(v)||v==='转U')?'none':'block';}
+/* USDT is always exchanged into cash first; depositing it is an account transfer */
+function incomeAccount(b){return ACCOUNTS.includes(b.payment)?b.payment:b.payment==='转U'?'现金':(b.account||'');}
 function rebuildDropdowns(){
   // Always bilingual options
   const catOpts=CATS_ZH.map((z,i)=>`<option value="${z}">${z} / ${CATS_EN[i]}</option>`).join('');
@@ -961,7 +983,8 @@ async function loadAll(){
     expenses=(results[0].data||[]).map(b=>({...b,payment:normPay(b.payment)}));
     incomes=results[1].data||[];
     pettyCash=results[2].data||[];
-    if(isAdmin){users=results[3]?.data||[];updatePendingBadge();}
+    if(isAdmin){users=results[3]?.data||[];updatePendingBadge();
+      try{const x=await withTimeout(sb.from('account_transfers').select('*').order('date',{ascending:false}));if(!x.error)transfers=x.data||[];}catch(e){}}
     await loadPeople();
     try{const o=await withTimeout(sb.from('ledger_settings').select('value').eq('key','opening'));if(!o.error&&o.data&&o.data[0])opening={...opening,...o.data[0].value};}catch(e){}
     try{const d=await withTimeout(sb.from('fleet_drivers').select('*').eq('active',true).order('id'));if(!d.error)fleetDrivers=d.data||[];}catch(e){}
@@ -1084,7 +1107,7 @@ function billHTML(b,type){
   else amtHTML=`<div class="bill-amt">AED ${fmtAED(aedAmt)}</div>`;
   const statusLabel=b.status==='已确认'?t('status-confirmed'):b.status==='待确认'?t('status-pending'):b.status||'';
   const meta=isInc
-    ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#e6f4ff;padding:1px 6px;border-radius:99px;color:#0958d9;">${payLabel(b.payment||'')}${b.payment==='转U'&&b.account?' → '+payLabel(b.account):(!ACCOUNTS.includes(b.payment)&&b.payment!=='转U'&&!b.account?L('（未指定银行）',' (bank?)'):'')}</span>`
+    ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#e6f4ff;padding:1px 6px;border-radius:99px;color:#0958d9;">${payLabel(b.payment||'')}${b.payment==='转U'?' → '+L('现金','Cash'):(!ACCOUNTS.includes(b.payment)&&b.payment!=='转U'&&!b.account?L('（未指定银行）',' (bank?)'):'')}</span>`
     :isPetty
     ?`<span>${b.date||''}</span><span class="tag tag-备用金">${t('tab-petty')}</span>${b.created_by&&b.created_by===b.receiver&&b.created_by!==b.giver?`<span style="font-size:11px;color:#389e0d;">收款人登记 / Recorded by receiver</span>`:''}`
     :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>`;
@@ -1137,6 +1160,9 @@ function renderIncome(){
   document.getElementById('income-total').innerHTML=list.length?`${L('合计','Total')} <b style="color:#389e0d;">AED ${fmtAED(tot)}</b>`+(Object.keys(byAcc).length>1?' · '+Object.entries(byAcc).map(([k,v])=>`${k==='现金'?L('现金','Cash'):k} ${fmtAED(v)}`).join(' · '):''):'';
   const el=document.getElementById('income-list');
   const q=getSearch();
+  const isAdm=currentUser?.role==='admin';document.getElementById('xfer-bar').style.display=isAdm?'block':'none';
+  const xs=isAdm&&!payer&&!payee&&!q?transfers.filter(x=>(!fm||(x.date&&x.date.startsWith(fm)))&&(!acc||x.from_acc===acc||x.to_acc===acc)):[];
+  if(xs.length){const items=[...list.map(b=>({d:b.date,h:billHTML(b,'income')})),...xs.map(x=>({d:x.date,h:xferHTML(x)}))].sort((a,b)=>(b.d||'').localeCompare(a.d||''));el.innerHTML=items.map(i=>i.h).join('');return;}
   el.innerHTML=list.length?list.map(b=>billHTML(b,'income')).join(''):`<div class="empty">💰 ${q?(lang==='zh'?`未找到「${q}」`:(`No results for "${q}"`)):lang==='zh'?'暂无收入':'No income'}</div>`;
 }
 
@@ -1603,7 +1629,7 @@ async function saveIncome(){
   if(!payer||!payee||!amount){alert(lang==='zh'?'请填写打款人、收款人和金额':'Please fill payer, payee and amount');return;}
   const row={payer,payee,amount:parseFloat(amount),date:document.getElementById('i-date').value,
     status:document.getElementById('i-status').value,payment:document.getElementById('i-pay').value,
-    account:ACCOUNTS.includes(document.getElementById('i-pay').value)?document.getElementById('i-pay').value:document.getElementById('i-account').value,
+    account:(()=>{const v=document.getElementById('i-pay').value;return ACCOUNTS.includes(v)?v:v==='转U'?'现金':document.getElementById('i-account').value;})(),
     note:document.getElementById('i-note').value.trim(),photos:currentPhotosI,created_by:currentUser.name};
   if(editIncomeId){
     const{error}=await sb.from('incomes').update(row).eq('id',editIncomeId);
@@ -1685,13 +1711,51 @@ function matchDriver(text){
 }
 const PETTY_HOLDERS=['刘承林','保姆','杨文辉'];
 const ACCOUNTS=['现金','WIO','FAB','NBD'];
+let transfers=[],editXferId=null;
+function xferNet(a,f,t){return sumAmt(transfers.filter(x=>(f?inRange(x,f,t):afterStart(x))&&x.to_acc===a))-sumAmt(transfers.filter(x=>(f?inRange(x,f,t):afterStart(x))&&x.from_acc===a));}
+async function openXfer(id){
+  const x=id?transfers.find(t=>t.id===id):null;editXferId=x?x.id:null;
+  document.getElementById('xfer-title').textContent=x?L('编辑账户互转','Edit transfer'):L('账户互转 / Account Transfer','Account Transfer');
+  document.getElementById('x-from').value=x?x.from_acc:'现金';document.getElementById('x-to').value=x?x.to_acc:'WIO';
+  document.getElementById('x-amount').value=x?x.amount:'';document.getElementById('x-date').value=x?x.date:today();document.getElementById('x-note').value=x?(x.note||''):'';
+  document.getElementById('modal-xfer').classList.add('open');
+}
+async function saveXfer(){
+  const row={from_acc:document.getElementById('x-from').value,to_acc:document.getElementById('x-to').value,amount:parseFloat(document.getElementById('x-amount').value||0),
+    date:document.getElementById('x-date').value||today(),note:document.getElementById('x-note').value.trim(),created_by:currentUser.name};
+  if(!row.amount){alert(L('请填写金额','Please enter the amount'));return;}
+  if(row.from_acc===row.to_acc){alert(L('转出和转入不能是同一个账户','From and To must be different'));return;}
+  if(editXferId){const{error}=await sb.from('account_transfers').update(row).eq('id',editXferId);if(error){alert('保存失败：'+error.message);return;}
+    const i=transfers.findIndex(t=>t.id===editXferId);if(i>=0)transfers[i]={...transfers[i],...row};}
+  else{const{data,error}=await sb.from('account_transfers').insert(row).select().single();if(error){alert('保存失败：'+error.message);return;}if(data)transfers.unshift(data);}
+  closeModals();render();
+}
+async function delXfer(id){
+  if(!confirm(L('确认删除这笔账户互转？','Delete this transfer?')))return;
+  const{error}=await sb.from('account_transfers').delete().eq('id',id);if(error){alert('删除失败：'+error.message);return;}
+  transfers=transfers.filter(t=>t.id!==id);render();
+}
+function xferHTML(x){
+  const lab=a=>a==='现金'?L('现金','Cash'):a;
+  return`<div class="bill-item" style="border-left:3px solid #91caff;">
+    <div class="avatar" style="background:#e6f4ff;color:#0958d9;">⇄</div>
+    <div class="bill-info">
+      <div class="bill-name">${lab(x.from_acc)} → ${lab(x.to_acc)}</div>
+      <div class="bill-meta"><span>${x.date||''}</span><span class="tag" style="background:#e6f4ff;color:#0958d9;">${L('账户互转','Transfer')}</span></div>
+      ${x.note?`<span class="item-note">${x.note}</span>`:''}
+    </div>
+    <div class="bill-right"><div class="bill-amt" style="color:#0958d9;">AED ${fmtAED(parseFloat(x.amount||0))}</div>
+      <div style="display:flex;gap:4px;"><button class="action-btn" onclick="openXfer('${x.id}')">✏️</button><button class="action-btn" onclick="delXfer('${x.id}')">🗑️</button></div></div>
+  </div>`;
+}
+
 function openingAcc(a){const o=opening.accounts||{};if(!opening.accounts&&a==='现金')return parseFloat(opening.own)||0;return parseFloat(o[a])||0;}
 function accountBal(a){
   const inc=incomes.filter(b=>afterStart(b)&&incomeAccount(b)===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   const exp=expenses.filter(b=>afterStart(b)&&normPay(b.payment)===a).reduce((s,b)=>s+toAED(b),0);
   const out=pettyCash.filter(b=>afterStart(b)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
   const back=pettyCash.filter(b=>afterStart(b)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a).reduce((s,b)=>s+parseFloat(b.amount||0),0);
-  return openingAcc(a)+inc-exp-out+back;
+  return openingAcc(a)+inc-exp-out+back+xferNet(a);
 }
 function nextMonth(m){const[y,mm]=m.split('-').map(Number);return mm===12?`${y+1}-01`:`${y}-${String(mm+1).padStart(2,'0')}`;}
 function inRange(b,f,t){return !!b.date&&b.date>=f&&b.date<t;}
@@ -1702,7 +1766,7 @@ function accFlows(a,f,t){
   const back=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver==='徐慧'&&b.giver!=='徐慧'&&(b.account||'现金')===a));
   const exp=a==='未指定'?0:sumAmt(expenses.filter(b=>inRange(b,f,t)&&normPay(b.payment)===a),toAED);
   const give=a==='未指定'?0:sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.giver==='徐慧'&&b.receiver!=='徐慧'&&(b.account||'现金')===a));
-  return{inn:inc,out:exp,tr:back-give};
+  return{inn:inc,out:exp,tr:back-give+(a==='未指定'?0:xferNet(a,f,t))};
 }
 function pettyFlows(n,f,t){
   const got=sumAmt(pettyCash.filter(b=>inRange(b,f,t)&&b.receiver===n&&b.giver!==n));
@@ -1929,7 +1993,7 @@ async function savePwd(){
 }
 
 function closeModals(){
-  ['modal-expense','modal-income','modal-petty','modal-pwd','modal-opening'].forEach(id=>document.getElementById(id).classList.remove('open'));
+  ['modal-expense','modal-income','modal-petty','modal-pwd','modal-opening','modal-xfer'].forEach(id=>document.getElementById(id).classList.remove('open'));
 }
 
 /* ── Lightbox ── */
