@@ -273,7 +273,7 @@ input:checked+.slider:before{transform:translateX(18px);}
   <div class="metric clickable" id="acc-card" onclick="goTab('expense')" style="margin:-0.5rem 0 1.25rem;display:none;background:#f0f7ff;border-color:#bae0ff;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
       <div style="display:flex;align-items:center;gap:8px;"><div class="ml t-acc-sum" style="margin:0;white-space:nowrap;">账户余额</div>
-        <button class="btn btn-s btn-sm" style="padding:2px 8px;font-size:12px;white-space:nowrap;color:#0958d9;border-color:#91caff;" onclick="event.stopPropagation();openXfer()">⇄ <span class="t-xfer-short">互转存现</span></button></div>
+        <button class="btn btn-s btn-sm" style="padding:2px 8px;font-size:12px;white-space:nowrap;color:#0958d9;border-color:#91caff;" onclick="event.stopPropagation();openXfer(null,'withdraw')">🏧 <span class="t-wd-short">提现</span></button><button class="btn btn-s btn-sm" style="padding:2px 8px;font-size:12px;white-space:nowrap;color:#0958d9;border-color:#91caff;" onclick="event.stopPropagation();openXfer()">⇄ <span class="t-xfer-short">互转存现</span></button></div>
       <div style="font-size:12px;color:#888;white-space:nowrap;"><span class="t-total">合计</span> <span class="mv" style="font-size:17px;color:#0958d9;" id="m-acc">0</span></div>
     </div>
     <div id="m-acc-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;"></div>
@@ -300,6 +300,7 @@ input:checked+.slider:before{transform:translateX(18px);}
   <div id="tab-bills" class="sec active">
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
       <button class="btn btn-green" onclick="openIncome()">＋ 收入 / Income</button>
+      <button class="btn btn-s admin-only" style="display:none;" onclick="openAdvance()">＋ 预支 / Advance</button>
       <button class="btn btn-p" onclick="openAdd()">＋ 支出 / Expense</button>
     </div>
     <div class="filter-row">
@@ -313,6 +314,7 @@ input:checked+.slider:before{transform:translateX(18px);}
   </div>
 
   <div id="tab-expense" class="sec">
+    <div id="adv-outstanding" style="display:none;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px;color:#ad4e00;"></div>
     <div class="filter-row">
       <select id="fm1" onchange="renderExpense()"><option value="">全部 / All Months</option></select>
       <select id="fp2" onchange="renderExpense()"><option value="">全部 / All People</option></select>
@@ -474,7 +476,7 @@ input:checked+.slider:before{transform:translateX(18px);}
       </div>
     </div>
     <div class="frow">
-      <div class="fg"><label class="t-date">日期 / Date</label><input type="date" id="e-date"></div>
+      <div class="fg"><label class="t-date">日期 / Date</label><input type="date" id="e-date" onchange="if(document.getElementById('e-cat').value==='工资')recalcSalary()"></div>
       <div class="fg"><label class="t-payment">支付方式 / Payment</label>
         <select id="e-pay" onchange="onEPayChange()"><option>WIO</option><option>FAB</option><option>NBD</option><option value="现金">现金 / Cash</option><option value="备用金">备用金 / Petty Cash</option></select>
       </div>
@@ -531,6 +533,25 @@ input:checked+.slider:before{transform:translateX(18px);}
 </div>
 
 <!-- 备用金弹窗 -->
+<div class="overlay" id="modal-adv">
+  <div class="modal" style="width:400px;">
+    <div class="mhd"><h3 id="adv-title">预支工资 / Salary Advance</h3><button class="close-btn" onclick="closeModals()">×</button></div>
+    <div style="font-size:12px;color:#888;margin-bottom:12px;">预支的钱下次发工资时自动扣除。<br>Advances are deducted automatically on the next payroll.</div>
+    <div class="fg"><label>预支给谁 / Who *</label><select id="a-name" onchange="onPartySel('a-name')"></select><input type="text" id="a-name-other" placeholder="输入名字 / Name" style="display:none;margin-top:6px;"></div>
+    <div class="frow">
+      <div class="fg"><label>金额（AED）*</label><input type="number" id="a-amount" step="0.01" min="0" placeholder="0.00"></div>
+      <div class="fg"><label>日期 / Date</label><input type="date" id="a-date"></div>
+    </div>
+    <div class="fg"><label>谁付的 / Paid from</label><select id="a-pay"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option><option value="保姆备用金">保姆备用金 / Nanny petty cash</option></select></div>
+    <div class="fg"><label>备注 / Note</label><input type="text" id="a-note" placeholder="例：家里有事"></div>
+    <div id="a-warn" style="display:none;font-size:12px;color:#cf1322;margin-bottom:8px;"></div>
+    <div class="actions">
+      <button class="btn btn-s" onclick="closeModals()">取消 / Cancel</button>
+      <button class="btn btn-p" onclick="saveAdvance()">保存 / Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-xfer">
   <div class="modal" style="width:400px;">
     <div class="mhd"><h3 id="xfer-title">账户互转 / Account Transfer</h3><button class="close-btn" onclick="closeModals()">×</button></div>
@@ -708,7 +729,7 @@ function nm(n){const v=PETTY_NAMES[n];return lang==='en'&&v?v.split(' / ')[1]:n;
 const T={
   zh:{
     'title':'官邸每月流水账 / Residence Ledger','sub':'支出 · 收入 · 备用金 / Expense · Income · Petty Cash',
-    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','opening':'期初余额','acc-sum':'账户余额','xfer-short':'互转存现','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
+    'admin':'管理员','logout':'退出','app-short':'官邸流水账','recv-petty':'收到备用金','give-petty-short':'发放备用金','petty-sum':'备用金结余 Petty Cash','opening':'期初余额','acc-sum':'账户余额','xfer-short':'互转存现','wd-short':'提现','total':'合计','records':'笔数 Records','api-status-on':'已配置','api-status-off':'未配置',
     'month-filter':'📅 月份 / Month','clear':'清除 / Clear',
     'm-expense':'支出 / Expense（AED）','m-income':'收入 / Income（AED）','m-balance':'结余 / Balance（AED）','m-petty':'备用金 / Petty Cash Balance',
     'tab-bills':'全部','tab-expense':'支出','tab-income':'收入','tab-petty':'备用金','tab-summary':'汇总','tab-export':'导出','tab-admin':'权限',
@@ -733,7 +754,7 @@ const T={
   },
   en:{
     'title':'Residence Monthly Ledger','sub':'Expenses · Income · Petty Cash · AI · Real-time Sync',
-    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','opening':'Opening','acc-sum':'Account Balances','xfer-short':'Transfer','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
+    'admin':'Admin','logout':'Logout','app-short':'Ledger','recv-petty':'Received','give-petty-short':'Issue','petty-sum':'Petty Cash Balance','opening':'Opening','acc-sum':'Account Balances','xfer-short':'Transfer','wd-short':'Withdraw','total':'Total','records':'Records','api-status-on':'Configured','api-status-off':'Not Set',
     'month-filter':'📅 Month','clear':'Clear',
     'm-expense':'Expense (AED)','m-income':'Income (AED)','m-balance':'Balance (AED)','m-petty':'Petty Cash Balance',
     'tab-bills':'All','tab-expense':'Expense','tab-income':'Income','tab-petty':'Petty Cash','tab-summary':'Summary','tab-export':'Export','tab-admin':'Admin',
@@ -930,6 +951,7 @@ async function initApp(user){
     document.getElementById('admin-tag').style.display='inline';
     document.getElementById('admin-tab').style.display='inline-block';
     document.getElementById('opening-btn').style.display='inline-flex';
+    document.querySelectorAll('.admin-only').forEach(el=>el.style.display='');
   }
   // All users can issue petty cash (members can transfer from their balance)
   document.getElementById('petty-add-btn').style.display='inline-flex';
@@ -1076,7 +1098,7 @@ function onGlobalMonthChange(){
   render();
 }
 
-function render(){renderMetrics();renderAll();renderExpense();renderIncome();renderPetty();renderSummary();renderExport();renderAdmin();syncSelects();}
+function render(){renderAdvOutstanding();renderMetrics();renderAll();renderExpense();renderIncome();renderPetty();renderSummary();renderExport();renderAdmin();syncSelects();}
 
 function fmtAED(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 
@@ -1148,7 +1170,7 @@ function billHTML(b,type){
     ?`<span>${b.date||''}</span><span class="tag tag-收入">${t('tab-income')}</span><span class="sdot sdot-${b.status}"></span><span style="font-size:11px;background:#e6f4ff;padding:1px 6px;border-radius:99px;color:#0958d9;">${payLabel(b.payment||'')}${b.payment==='转U'?' → '+L('现金','Cash'):(!ACCOUNTS.includes(b.payment)&&b.payment!=='转U'&&!b.account?L('（未指定银行）',' (bank?)'):'')}</span>`
     :isPetty
     ?`<span>${b.date||''}</span><span class="tag tag-备用金">${t('tab-petty')}</span>${b.created_by&&b.created_by===b.receiver&&b.created_by!==b.giver?`<span style="font-size:11px;color:#389e0d;">收款人登记 / Recorded by receiver</span>`:''}`
-    :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>${pendingReimb(b)?`<span style="font-size:11px;background:#fff1f0;color:#cf1322;border:1px solid #ffa39e;padding:0 6px;border-radius:99px;">${L('待报销','To reimburse')}</span>`:''}${b.petty_from&&b.petty_from!==b.person?`<span style="font-size:11px;background:#fffbe6;color:#ad6800;border:1px solid #ffe58f;padding:0 6px;border-radius:99px;">${L('扣','from')} ${nm(b.petty_from)} ${L('备用金','petty')}</span>`:''}`;
+    :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>${isAdvance(b)?`<span style="font-size:11px;background:${b.advance_deducted_by?'#f5f5f5':'#fff7e6'};color:${b.advance_deducted_by?'#8c8c8c':'#ad4e00'};border:1px solid ${b.advance_deducted_by?'#d9d9d9':'#ffd591'};padding:0 6px;border-radius:99px;">${b.advance_deducted_by?L('预支·已扣','advance · deducted'):L('预支·待扣','advance · pending')}</span>`:''}${pendingReimb(b)?`<span style="font-size:11px;background:#fff1f0;color:#cf1322;border:1px solid #ffa39e;padding:0 6px;border-radius:99px;">${L('待报销','To reimburse')}</span>`:''}${b.petty_from&&b.petty_from!==b.person?`<span style="font-size:11px;background:#fffbe6;color:#ad6800;border:1px solid #ffe58f;padding:0 6px;border-radius:99px;">${L('扣','from')} ${nm(b.petty_from)} ${L('备用金','petty')}</span>`:''}`;
   const photos=(b.photos&&b.photos.length)?`<div class="bill-photos">${b.photos.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')" loading="lazy">`).join('')}</div>`:'';
   const edf=isInc?`editIncome('${b.id}')`:isPetty?`editPetty('${b.id}')`:(`editExpense('${b.id}')`);
   const dlf=isInc?`delIncome('${b.id}')`:isPetty?`delPetty('${b.id}')`:(`delExpense('${b.id}')`);
@@ -1473,6 +1495,41 @@ async function recognizeWithAI(dataUrl,type,mode){
 /* ── Payroll (工资) ── */
 const SALARY_DEFAULT=[['Anna',2500],['Dora',2000],['Mayat',3000],['Ali',3800],['曹立强',3300],['园丁',200]];
 const PAYROLL_TAG='工资明细 / Payroll: ';
+const ADV_TAG='扣预支 / Advances deducted: ';
+/* Advances: salary paid early. Stored as a 工资 expense with advance_for=<name>; the payroll that deducts it sets advance_deducted_by=<payroll id>. */
+function isAdvance(b){return !!b.advance_for;}
+function advancesFor(name,payrollId,payrollDate){
+  return expenses.filter(b=>isAdvance(b)&&b.advance_for===name&&(payrollId&&b.advance_deducted_by===payrollId||(!b.advance_deducted_by&&(!payrollDate||!b.date||b.date<=payrollDate))));
+}
+function outstandingAdvances(){return expenses.filter(b=>isAdvance(b)&&!b.advance_deducted_by);}
+function salaryNames(){return [...new Set([...(salaryTemplate()||[]).map(([n])=>n),...outstandingAdvances().map(b=>b.advance_for)])].filter(Boolean);}
+async function openAdvance(){
+  if(await updateIfNewer())return;
+  fillParty('a-name',salaryNames(),'');document.getElementById('a-name').value='';
+  document.getElementById('a-name').insertAdjacentHTML('afterbegin','<option value="">请选择 / Select</option>');document.getElementById('a-name').value='';
+  ['a-amount','a-note'].forEach(id=>document.getElementById(id).value='');document.getElementById('a-date').value=today();
+  document.getElementById('a-pay').value='现金';document.getElementById('a-warn').style.display='none';
+  document.getElementById('modal-adv').classList.add('open');
+}
+async function saveAdvance(){
+  const name=getParty('a-name'),amount=parseFloat(document.getElementById('a-amount').value||0),pay=document.getElementById('a-pay').value;
+  if(!name||!amount){alert(L('请选择人员并填写金额','Please choose the person and amount'));return;}
+  const fromNanny=pay==='保姆备用金';
+  const row={merchant:`预支工资 · ${name}`,amount,currency:'AED',person:fromNanny?'保姆':'徐慧',category:'工资',
+    date:document.getElementById('a-date').value||today(),status:'已确认',payment:fromNanny?'备用金':pay,
+    note:document.getElementById('a-note').value.trim(),photos:[],created_by:currentUser.name,advance_for:name};
+  const{data,error}=await sb.from('expenses').insert(row).select().single();
+  if(error){alert('保存失败：'+error.message);return;}
+  if(data)expenses.unshift(data);closeModals();render();
+}
+function renderAdvOutstanding(){
+  const el=document.getElementById('adv-outstanding');if(!el)return;
+  const list=currentUser?.role==='admin'?outstandingAdvances():[];
+  if(!list.length){el.style.display='none';return;}
+  const by={};list.forEach(b=>{by[b.advance_for]=(by[b.advance_for]||0)+toAED(b);});
+  el.style.display='block';
+  el.innerHTML=`💸 ${L('未扣预支（下次发工资自动扣）','Advances to deduct on next payroll')}：`+Object.entries(by).map(([n,v])=>`<b>${n}</b> ${fmtAED(v)}`).join(' · ');
+}
 
 function parsePayroll(note){
   const line=(note||'').split('\n').find(l=>l.startsWith(PAYROLL_TAG));
@@ -1494,13 +1551,16 @@ function addSalaryRow(name,amount,focus){
   const wrap=document.getElementById('salary-rows');
   const row=document.createElement('div');
   row.className='salary-row';
-  row.style.cssText='display:flex;gap:6px;margin-bottom:6px;align-items:center;';
+  row.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;align-items:center;';
   row.innerHTML=`<input type="text" class="sal-name" placeholder="姓名 / Name" style="flex:1;min-width:0;font-family:inherit;font-size:14px;border:1px solid #d9d9d9;border-radius:8px;padding:6px 8px;">
     <input type="number" class="sal-amt" step="0.01" min="0" placeholder="0" style="width:110px;font-family:inherit;font-size:14px;border:1px solid #d9d9d9;border-radius:8px;padding:6px 8px;">
-    <button type="button" title="删除 / Remove" style="background:none;border:none;cursor:pointer;color:#999;font-size:18px;">×</button>`;
+    <button type="button" title="删除 / Remove" style="background:none;border:none;cursor:pointer;color:#999;font-size:18px;">×</button>
+    <span class="sal-adv" style="display:none;flex-basis:100%;text-align:right;font-size:12px;color:#ad4e00;cursor:pointer;margin-top:-2px;" title="点一下：这次不扣 / Tap to skip"></span>`;
   row.querySelector('.sal-name').value=name||'';
   row.querySelector('.sal-amt').value=amount||'';
   row.querySelector('.sal-amt').addEventListener('input',recalcSalary);
+  row.querySelector('.sal-name').addEventListener('change',recalcSalary);
+  row.querySelector('.sal-adv').addEventListener('click',()=>{row.dataset.skip=row.dataset.skip==='1'?'0':'1';recalcSalary();});
   row.querySelector('button').addEventListener('click',()=>{row.remove();recalcSalary();});
   wrap.appendChild(row);
   if(focus)row.querySelector('.sal-name').focus();
@@ -1513,9 +1573,23 @@ function getSalaryRows(){
   ]).filter(([n,a])=>n||a);
 }
 
+/* Advances to deduct in this payroll: [{name, amount, ids}] */
+function payrollDeductions(){
+  const date=document.getElementById('e-date').value||today();const out=[];
+  document.querySelectorAll('#salary-rows .salary-row').forEach(r=>{
+    const n=r.querySelector('.sal-name').value.trim();const tag=r.querySelector('.sal-adv');
+    const adv=n?advancesFor(n,editExpenseId,date):[];const amt=adv.reduce((s,b)=>s+toAED(b),0);
+    if(!adv.length){tag.style.display='none';return;}
+    const skip=r.dataset.skip==='1';tag.style.display='inline';
+    tag.innerHTML=skip?`<s>${L('预支','adv.')} −${fmtAED(amt)}</s> ${L('这次不扣（点一下恢复）','skipped (tap to undo)')}`:`↳ ${L('扣预支','minus advance')} −${fmtAED(amt)} · ${L('实发','net')} ${fmtAED((parseFloat(r.querySelector('.sal-amt').value)||0)-amt)} <span style="color:#bbb">${L('（点一下不扣）','(tap to skip)')}</span>`;
+    if(!skip)out.push({name:n,amount:amt,ids:adv.map(b=>b.id)});
+  });
+  return out;
+}
 function recalcSalary(){
-  const total=getSalaryRows().reduce((s,[,a])=>s+a,0);
-  document.getElementById('salary-total').textContent=total.toFixed(2);
+  const gross=getSalaryRows().reduce((s,[,a])=>s+a,0);
+  const ded=payrollDeductions().reduce((s,d)=>s+d.amount,0);const total=gross-ded;
+  document.getElementById('salary-total').innerHTML=ded?`${fmtAED(gross)} − ${L('预支','adv.')} ${fmtAED(ded)} = <b>${fmtAED(total)}</b>`:total.toFixed(2);
   if(document.getElementById('e-cat').value==='工资'&&document.querySelectorAll('#salary-rows .salary-row').length){
     document.getElementById('e-amount').value=total?+total.toFixed(2):'';
     document.getElementById('e-currency').value='AED';
@@ -1575,7 +1649,7 @@ function editExpense(id){
     const pr=parsePayroll(b.note);
     document.getElementById('salary-box').style.display='block';
     if(pr)fillSalaryRows(pr);
-    document.getElementById('e-note').value=(b.note||'').split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)).join('\n');
+    document.getElementById('e-note').value=(b.note||'').split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)&&!l.startsWith(ADV_TAG)).join('\n');
   }else document.getElementById('salary-box').style.display='none';
   renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');
   document.getElementById('modal-expense').classList.add('open');
@@ -1584,7 +1658,7 @@ function editExpense(id){
 async function saveExpense(){
   const merchant=document.getElementById('e-merchant').value.trim(),amount=document.getElementById('e-amount').value,person=document.getElementById('e-person').value;
   if(!merchant||!amount||!person){alert(lang==='zh'?'请填写商家、金额和消费人':'Please fill merchant, amount and person');return;}
-  let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)).join('\n').trim();
+  let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)&&!l.startsWith(ADV_TAG)).join('\n').trim();
   const cat=document.getElementById('e-cat').value;
   const chargedElsewhere=document.getElementById('e-pf-box').style.display!=='none'&&document.getElementById('e-pf').value&&document.getElementById('e-pf').value!==person;
   if(!editExpenseId&&cat!=='工资'&&!chargedElsewhere){
@@ -1612,6 +1686,8 @@ async function saveExpense(){
   if(sal.length){
     const line=PAYROLL_TAG+sal.map(([n,a])=>`${n} ${+a.toFixed(2)}`).join('; ');
     note=note?note+'\n'+line:line;
+    var deds=payrollDeductions();
+    if(deds.length)note+='\n'+ADV_TAG+deds.map(d=>`${d.name} ${+d.amount.toFixed(2)}`).join('; ');
   }
   const row={merchant,amount:parseFloat(amount),currency:document.getElementById('e-currency').value,person,
     category:cat,date:document.getElementById('e-date').value,
@@ -1625,16 +1701,27 @@ async function saveExpense(){
     if(error){alert('保存失败：'+error.message);return;}
     const i=expenses.findIndex(b=>b.id===editExpenseId);
     if(i>=0)expenses[i]={...expenses[i],...row};
+    if(cat==='工资'&&sal.length)await linkAdvances(editExpenseId,typeof deds!=='undefined'?deds:[]);
   }else{
     const{data,error}=await sb.from('expenses').insert(row).select().single();
     if(error){alert('保存失败：'+error.message);return;}
-    if(data)expenses.unshift(data);
+    if(data){expenses.unshift(data);if(cat==='工资'&&sal.length)await linkAdvances(data.id,typeof deds!=='undefined'?deds:[]);}
   }
   closeModals();render();
 }
 
+async function linkAdvances(payrollId,deds){
+  const ids=deds.flatMap(d=>d.ids);
+  const prev=expenses.filter(b=>b.advance_deducted_by===payrollId&&!ids.includes(b.id)).map(b=>b.id);
+  for(const id of prev){await sb.from('expenses').update({advance_deducted_by:null}).eq('id',id);const b=expenses.find(x=>x.id===id);if(b)b.advance_deducted_by=null;}
+  for(const id of ids){await sb.from('expenses').update({advance_deducted_by:payrollId}).eq('id',id);const b=expenses.find(x=>x.id===id);if(b)b.advance_deducted_by=payrollId;}
+}
 async function delExpense(id){
+  const b0=expenses.find(x=>x.id===id);
+  if(b0&&isAdvance(b0)&&b0.advance_deducted_by&&!confirm(L('这笔预支已经在某次发工资时扣过了，删除后那次工资就等于没扣。确定删除？','This advance was already deducted in a payroll. Delete anyway?')))return;
   if(!confirm(lang==='zh'?'确认删除？':'Confirm delete?'))return;
+  const linked=expenses.filter(x=>x.advance_deducted_by===id);
+  for(const a of linked){await sb.from('expenses').update({advance_deducted_by:null}).eq('id',a.id);a.advance_deducted_by=null;}
   const{error}=await sb.from('expenses').delete().eq('id',id);
   if(error){alert('删除失败：'+error.message);return;}
   expenses=expenses.filter(b=>b.id!==id);render();
@@ -1758,10 +1845,11 @@ const PETTY_HOLDERS=['刘承林','保姆','杨文辉'];
 const ACCOUNTS=['现金','WIO','FAB','NBD'];
 let transfers=[],editXferId=null;
 function xferNet(a,f,t){return sumAmt(transfers.filter(x=>(f?inRange(x,f,t):afterStart(x))&&x.to_acc===a))-sumAmt(transfers.filter(x=>(f?inRange(x,f,t):afterStart(x))&&x.from_acc===a));}
-async function openXfer(id){
-  const x=id?transfers.find(t=>t.id===id):null;editXferId=x?x.id:null;
-  document.getElementById('xfer-title').textContent=x?L('编辑账户互转','Edit transfer'):L('账户互转 / Account Transfer','Account Transfer');
-  document.getElementById('x-from').value=x?x.from_acc:'现金';document.getElementById('x-to').value=x?x.to_acc:'WIO';
+async function openXfer(id,mode){
+  const x=id?transfers.find(t=>t.id===id):null;editXferId=x?x.id:null;const wd=mode==='withdraw'||(x&&x.to_acc==='现金'&&x.from_acc!=='现金');
+  document.getElementById('xfer-title').textContent=x?(wd?L('编辑提现','Edit withdrawal'):L('编辑账户互转','Edit transfer')):(wd?L('🏧 提现 / Withdraw Cash','Withdraw Cash'):L('账户互转 / Account Transfer','Account Transfer'));
+  document.getElementById('x-from').value=x?x.from_acc:(wd?'WIO':'现金');document.getElementById('x-to').value=x?x.to_acc:(wd?'现金':'WIO');
+  document.getElementById('x-note').placeholder=wd?L('例：ATM 取现','e.g. ATM'):'例：U 换的现金存入 WIO';
   document.getElementById('x-amount').value=x?x.amount:'';document.getElementById('x-date').value=x?x.date:today();document.getElementById('x-note').value=x?(x.note||''):'';
   document.getElementById('modal-xfer').classList.add('open');
 }
@@ -1786,7 +1874,7 @@ function xferHTML(x){
     <div class="avatar" style="background:#e6f4ff;color:#0958d9;">⇄</div>
     <div class="bill-info">
       <div class="bill-name">${lab(x.from_acc)} → ${lab(x.to_acc)}</div>
-      <div class="bill-meta"><span>${x.date||''}</span><span class="tag" style="background:#e6f4ff;color:#0958d9;">${L('账户互转','Transfer')}</span></div>
+      <div class="bill-meta"><span>${x.date||''}</span><span class="tag" style="background:#e6f4ff;color:#0958d9;">${x.to_acc==='现金'?L('提现','Withdrawal'):L('账户互转','Transfer')}</span></div>
       ${x.note?`<span class="item-note">${x.note}</span>`:''}
     </div>
     <div class="bill-right"><div class="bill-amt" style="color:#0958d9;">AED ${fmtAED(parseFloat(x.amount||0))}</div>
@@ -2053,7 +2141,7 @@ async function savePwd(){
 }
 
 function closeModals(){
-  ['modal-expense','modal-income','modal-petty','modal-pwd','modal-opening','modal-xfer'].forEach(id=>document.getElementById(id).classList.remove('open'));
+  ['modal-expense','modal-income','modal-petty','modal-pwd','modal-opening','modal-xfer','modal-adv'].forEach(id=>document.getElementById(id).classList.remove('open'));
 }
 
 /* ── Lightbox ── */
