@@ -506,9 +506,12 @@ input:checked+.slider:before{transform:translateX(18px);}
     </div>
     <input type="file" id="file-inp-i" accept="image/*" multiple style="display:none" onchange="handleFile(this,'income')">
     <div class="ai-box" id="ai-box-i"><div class="ai-badge">✨ AI</div><div id="ai-text-i"></div></div>
-    <div class="frow-3">
-      <div class="fg"><label class="t-payer">打款人 / Payer *</label><input type="text" id="i-payer" placeholder="打款方" oninput="renderIncomeChips()"><div class="chips" id="i-payer-chips"></div></div>
-      <div class="fg"><label class="t-payee">收款人 / Payee *</label><input type="text" id="i-payee" placeholder="收款方" oninput="renderIncomeChips()"><div class="chips" id="i-payee-chips"></div></div>
+    <div class="frow">
+      <div class="fg"><label class="t-payer">打款人 / Payer *</label><select id="i-payer" onchange="onPartySel('i-payer')"></select><input type="text" id="i-payer-other" placeholder="输入名字 / Name" style="display:none;margin-top:6px;"></div>
+      <div class="fg"><label class="t-note">备注 / Note</label><input type="text" id="i-note" placeholder="例：转u12000"></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="t-payee">收款人 / Payee *</label><select id="i-payee" onchange="onPartySel('i-payee')"></select><input type="text" id="i-payee-other" placeholder="输入名字 / Name" style="display:none;margin-top:6px;"></div>
       <div class="fg"><label class="t-amount-aed">金额（AED）*</label><input type="number" id="i-amount" placeholder="0.00" step="0.01" min="0"></div>
     </div>
     <div class="frow">
@@ -519,7 +522,6 @@ input:checked+.slider:before{transform:translateX(18px);}
       <div class="fg"><label class="t-status">状态 / Status</label><select id="i-status"><option value="已确认">已确认 / Confirmed</option><option value="待确认">待确认 / Pending</option></select></div>
       <div class="fg" id="i-account-box" style="display:none;"><label>到账账户 / Into account</label><select id="i-account"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
     </div>
-    <div class="fg" style="margin-bottom:0;"><label class="t-note">备注 / Note</label><textarea id="i-note" rows="2"></textarea></div>
     <div class="actions">
       <button class="btn btn-s t-cancel" onclick="closeModals()">取消 / Cancel</button>
       <button class="btn btn-green" id="income-save-btn" onclick="saveIncome()"><span class="t-save-income">保存 / Save Income</span></button>
@@ -826,12 +828,17 @@ function payeeChoices(){
   const base=['徐慧',...PETTY_HOLDERS];const c={};incomes.forEach(b=>{if(b.payee)c[b.payee]=(c[b.payee]||0)+1;});
   return [...new Set([...Object.entries(c).sort((a,b)=>b[1]-a[1]).map(([n])=>n),...base])].slice(0,6);
 }
-function renderIncomeChips(){
-  const mk=(id,list)=>{const inp=document.getElementById(id),box=document.getElementById(id+'-chips');
-    box.innerHTML=list.map(n=>`<button type="button" class="chip${inp.value===n?' on':''}" data-v="${n}">${nm(n)}</button>`).join('');
-    box.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{inp.value=b.dataset.v;renderIncomeChips();});};
-  mk('i-payer',payerChoices());mk('i-payee',payeeChoices());
+const OTHER='__other';
+function fillParty(id,list,val){
+  const s=document.getElementById(id),o=document.getElementById(id+'-other');
+  const opts=[...new Set([...list,...(val&&val!==OTHER?[val]:[])])];
+  s.innerHTML=opts.map(n=>`<option value="${n}">${PETTY_NAMES[n]||n}</option>`).join('')+`<option value="${OTHER}">＋ 其他 / Other…</option>`;
+  s.value=val||opts[0]||OTHER;o.value='';o.style.display=s.value===OTHER?'block':'none';
 }
+function onPartySel(id){const o=document.getElementById(id+'-other');const on=document.getElementById(id).value===OTHER;o.style.display=on?'block':'none';if(on)o.focus();}
+function getParty(id){const s=document.getElementById(id);return s.value===OTHER?document.getElementById(id+'-other').value.trim():s.value;}
+function setParty(id,v){fillParty(id,id==='i-payer'?payerChoices():payeeChoices(),v);}
+
 function onIPayChange(){const v=document.getElementById('i-pay').value;const box=document.getElementById('i-account-box');if(box)box.style.display=(ACCOUNTS.includes(v)||v==='转U')?'none':'block';}
 /* USDT is always exchanged into cash first; depositing it is an account transfer */
 function incomeAccount(b){return ACCOUNTS.includes(b.payment)?b.payment:b.payment==='转U'?'现金':(b.account||'');}
@@ -1449,8 +1456,8 @@ async function recognizeWithAI(dataUrl,type,mode){
       onAmountChange();
       txt.innerHTML=p.merchant||p.amount?`✅ ${p.merchant||'-'} · ${p.currency||'AED'} ${p.amount||'-'} · ${p.category||'-'}`:'⚠️ '+(lang==='zh'?'未识别到，请手动填写':'Not recognized, please fill manually');
     }else{
-      if(p.payer)document.getElementById('i-payer').value=p.payer;
-      if(p.payee)document.getElementById('i-payee').value=p.payee;
+      if(p.payer)setParty('i-payer',normPayer(p.payer)||p.payer);
+      if(p.payee)setParty('i-payee',p.payee);
       if(p.amount)document.getElementById('i-amount').value=p.amount;
       if(p.date)document.getElementById('i-date').value=p.date;
       if(p.note)document.getElementById('i-note').value=p.note;
@@ -1635,11 +1642,11 @@ async function openIncome(){
   editIncomeId=null;currentPhotosI=[];
   document.getElementById('income-title').textContent=t('add-income-title');
   document.getElementById('income-save-btn').querySelector('span').textContent=t('save-income');
-  ['i-payer','i-payee','i-amount','i-note'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('i-payee').value='徐慧';document.getElementById('i-payer').value=payerChoices()[0]||'';
+  ['i-amount','i-note'].forEach(id=>document.getElementById(id).value='');
+  setParty('i-payee','徐慧');setParty('i-payer',payerChoices()[0]||'');
   document.getElementById('i-date').value=today();document.getElementById('i-status').value='已确认';
   document.getElementById('i-pay').value='现金';document.getElementById('i-account').value='现金';onIPayChange();document.getElementById('ai-box-i').style.display='none';
-  renderIncomeChips();
+
   renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
   document.getElementById('modal-income').classList.add('open');
 }
@@ -1649,7 +1656,7 @@ function editIncome(id){
   editIncomeId=id;currentPhotosI=b.photos?[...b.photos]:[];
   document.getElementById('income-title').textContent=lang==='zh'?'编辑收入':'Edit Income';
   document.getElementById('income-save-btn').querySelector('span').textContent=lang==='zh'?'保存修改':'Save';
-  document.getElementById('i-payer').value=b.payer||'';document.getElementById('i-payee').value=b.payee||'';renderIncomeChips();
+  setParty('i-payer',b.payer||'');setParty('i-payee',b.payee||'');
   document.getElementById('i-amount').value=b.amount||'';document.getElementById('i-date').value=b.date||'';
   document.getElementById('i-status').value=b.status||'已确认';(()=>{const s=document.getElementById('i-pay'),v=b.payment||'现金';if(![...s.options].some(o=>o.value===v))s.insertAdjacentHTML('beforeend',`<option value="${v}">${v}（旧 / old）</option>`);s.value=v;})();
   document.getElementById('i-account').value=b.account&&ACCOUNTS.includes(b.account)?b.account:'现金';onIPayChange();
@@ -1659,7 +1666,7 @@ function editIncome(id){
 }
 
 async function saveIncome(){
-  const payer=document.getElementById('i-payer').value.trim(),payee=document.getElementById('i-payee').value.trim(),amount=document.getElementById('i-amount').value;
+  const payer=getParty('i-payer'),payee=getParty('i-payee'),amount=document.getElementById('i-amount').value;
   if(!payer||!payee||!amount){alert(lang==='zh'?'请填写打款人、收款人和金额':'Please fill payer, payee and amount');return;}
   const row={payer,payee,amount:parseFloat(amount),date:document.getElementById('i-date').value,
     status:document.getElementById('i-status').value,payment:document.getElementById('i-pay').value,
