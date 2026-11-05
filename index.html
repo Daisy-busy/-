@@ -1975,7 +1975,13 @@ function pettyOwner(b){return b.petty_from||b.person;}
 function settledFleet(b){return b.source==='fleet'&&/已报销/.test(b.note||'');}
 function driverCharged(b){return b.person==='司机'&&(b.source==='fleet'?!settledFleet(b):(isPettyPay(b.payment)&&!b.petty_from));}
 /* Someone else (not a driver) paid out of pocket and is waiting to be reimbursed: a cost, but no account has paid yet */
-function pendingReimb(b){return b.source==='fleet'&&b.status==='待确认'&&b.person!=='司机';}
+function pendingReimb(b){
+  if(b.source!=='fleet'||b.status!=='待确认'||b.person==='司机')return false;
+  // Paid by Xu Hui herself, or with one of her bank cards → it is not someone else's money waiting to be paid back
+  if(b.person==='徐慧'||/^徐慧/.test(b.person||''))return false;
+  if(['WIO','FAB','NBD'].includes(normPay(b.payment)))return false;
+  return true;
+}
 /* Does this expense come out of one of Xu Hui's accounts? */
 function hitsAccount(b){return !pendingReimb(b)&&!driverCharged(b);}
 function pendingReimbTotal(){return expenses.filter(b=>afterStart(b)&&pendingReimb(b)).reduce((s,b)=>s+toAED(b),0);}
