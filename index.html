@@ -1519,12 +1519,27 @@ function advancesFor(name,payrollId,payrollDate){
 }
 function outstandingAdvances(){return expenses.filter(b=>isAdvance(b)&&!b.advance_deducted_by);}
 function salaryNames(){return [...new Set([...(salaryTemplate()||[]).map(([n])=>n),...outstandingAdvances().map(b=>b.advance_for)])].filter(Boolean);}
+let editAdvId=null;
 async function openAdvance(){
   if(await updateIfNewer())return;
+  editAdvId=null;document.getElementById('adv-title').textContent=L('预支工资 / Salary Advance','Salary Advance');
   fillParty('a-name',salaryNames(),'');document.getElementById('a-name').value='';
   document.getElementById('a-name').insertAdjacentHTML('afterbegin','<option value="">请选择 / Select</option>');document.getElementById('a-name').value='';
   ['a-amount','a-note'].forEach(id=>document.getElementById(id).value='');document.getElementById('a-date').value=today();
   document.getElementById('a-pay').value='现金';document.getElementById('a-warn').style.display='none';
+  document.getElementById('modal-adv').classList.add('open');
+}
+function editAdvance(b){
+  editAdvId=b.id;
+  document.getElementById('adv-title').textContent=L('编辑预支 / Edit Advance','Edit Advance');
+  fillParty('a-name',salaryNames(),b.advance_for);
+  document.getElementById('a-amount').value=b.amount||'';document.getElementById('a-date').value=b.date||today();
+  document.getElementById('a-pay').value=isPettyPay(b.payment)&&b.person==='保姆'?'保姆备用金':(normPay(b.payment)||'现金');
+  document.getElementById('a-note').value=b.note||'';
+  const w=document.getElementById('a-warn'),pr=b.advance_deducted_by?expenses.find(x=>x.id===b.advance_deducted_by):null;
+  w.style.display=b.advance_deducted_by?'block':'none';
+  w.textContent=L(`这笔已在 ${pr?pr.date+' 的工资':'某次工资'}里扣过。改金额后，那次工资不会自动重算，需要去那笔工资里点编辑再保存一次。`,
+                  'Already deducted in a payroll. If you change the amount, re-save that payroll too.');
   document.getElementById('modal-adv').classList.add('open');
 }
 async function saveAdvance(){
@@ -1534,6 +1549,13 @@ async function saveAdvance(){
   const row={merchant:`预支工资 · ${name}`,amount,currency:'AED',person:fromNanny?'保姆':'徐慧',category:'工资',
     date:document.getElementById('a-date').value||today(),status:'已确认',payment:fromNanny?'备用金':pay,
     note:document.getElementById('a-note').value.trim(),photos:[],created_by:currentUser.name,advance_for:name};
+  if(editAdvId){
+    delete row.created_by;delete row.photos;
+    const{error}=await sb.from('expenses').update(row).eq('id',editAdvId);
+    if(error){alert('保存失败：'+error.message);return;}
+    const i=expenses.findIndex(b=>b.id===editAdvId);if(i>=0)expenses[i]={...expenses[i],...row};
+    editAdvId=null;closeModals();render();return;
+  }
   const{data,error}=await sb.from('expenses').insert(row).select().single();
   if(error){alert('保存失败：'+error.message);return;}
   if(data)expenses.unshift(data);closeModals();render();
@@ -1649,6 +1671,7 @@ async function openAdd(){
 
 function editExpense(id){
   const b=expenses.find(x=>x.id===id);if(!b)return;
+  if(isAdvance(b)){editAdvance(b);return;}   // advances have their own small form
   editExpenseId=id;currentPhotosE=b.photos?[...b.photos]:[];
   document.getElementById('expense-title').textContent=lang==='zh'?'编辑支出':'Edit Expense';
   document.getElementById('expense-save-btn').querySelector('span').textContent=lang==='zh'?'保存修改':'Save';
