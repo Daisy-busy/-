@@ -422,7 +422,8 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div class="card">
       <div style="font-size:14px;font-weight:600;margin-bottom:4px;" class="t-perm-title">权限管理 / Permission</div>
       <div style="font-size:12px;color:#888;margin-bottom:16px;" class="t-perm-sub">设置成员查看权限 / Set member view permissions</div>
-      <table class="perm-table">
+      <div id="dup-banner" style="display:none;background:#fff1f0;border:1px solid #ffa39e;color:#a8071a;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px;"></div>
+        <table class="perm-table">
         <thead><tr><th class="t-th-name">姓名 / Name</th><th class="t-th-role">角色 / Role</th><th class="t-th-view-all">查看全部 / View All</th><th class="t-th-pwd">密码 / Password</th></tr></thead>
         <tbody id="perm-body"></tbody>
       </table>
@@ -533,6 +534,20 @@ input:checked+.slider:before{transform:translateX(18px);}
 </div>
 
 <!-- 备用金弹窗 -->
+<div class="overlay" id="modal-merge">
+  <div class="modal" style="width:400px;">
+    <div class="mhd"><h3>合并账号 / Merge Accounts</h3><button class="close-btn" onclick="closeModals()">×</button></div>
+    <div style="font-size:13px;margin-bottom:10px;">把 <b id="mg-src"></b> 合并到：</div>
+    <div class="fg"><select id="mg-tgt" onchange="previewMerge()"></select></div>
+    <div id="mg-preview" style="font-size:12px;color:#555;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.7;"></div>
+    <div style="font-size:12px;color:#cf1322;margin-bottom:10px;">合并后：这些记录都会改到目标账号名下，原账号停用、不能再登录。</div>
+    <div class="actions">
+      <button class="btn btn-s" onclick="closeModals()">取消 / Cancel</button>
+      <button class="btn btn-p" id="mg-go" onclick="doMerge()">确认合并 / Merge</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-adv">
   <div class="modal" style="width:400px;">
     <div class="mhd"><h3 id="adv-title">预支工资 / Salary Advance</h3><button class="close-btn" onclick="closeModals()">×</button></div>
@@ -673,7 +688,7 @@ function applyPeople(list){
       PERSON_ALIASES[u.name]=al;
     }
   });
-  const holders=act.filter(u=>u.role!=='admin'&&u.name!=='司机'&&!DISABLED_LOGINS.includes(u.name)).map(u=>u.name);
+  const holders=act.filter(u=>u.role!=='admin'&&u.name!=='司机'&&!/^徐慧/.test(u.name)&&!DISABLED_LOGINS.includes(u.name)).map(u=>u.name);
   PETTY_HOLDERS.length=0;holders.forEach(n=>PETTY_HOLDERS.push(n));
   buildPeopleSelects();
 }
@@ -940,6 +955,7 @@ async function doLogin(){
   if(user&&(DISABLED_LOGINS.includes(user.name)||(user.name==='司机'&&user.driver_id==null))){showLoginErr('司机请使用用车系统记账 / Drivers please use the Fleet app');return;}
   if(user&&user.status==='pending'){showLoginErr('账号还在等管理员审核 / Waiting for admin approval');return;}
   if(user&&user.status==='rejected'){showLoginErr('注册未通过，请联系管理员 / Registration was not approved');return;}
+  if(user&&user.status==='merged'){showLoginErr('这个账号已经合并，请用合并后的账号登录 / This account was merged');return;}
   if(!user){showLoginErr(lang==='zh'?'用户名或密码错误':'Invalid name or password');return;}
   try{localStorage.setItem('current_user',JSON.stringify(user));}catch(e){}
   await initApp(user);
@@ -1313,19 +1329,74 @@ function renderSummary(){
   }).join('')||`<tr><td colspan="4" class="empty" style="padding:1.5rem;">${lang==='zh'?'暂无数据':'No data'}</td></tr>`;
 }
 
+/* The admin's own money (cash + bank cards) — never treated as a petty-cash holder */
+function isFundOwner(n){return !!n&&(/^徐慧/.test(n)||(allUsers||[]).some(u=>u.name===n&&u.role==='admin'));}
+/* Accounts that look like the same person: same phone, same English name, or one name contains the other */
+function dupOf(u){
+  const nm0=s=>String(s||'').toLowerCase().replace(/\s+/g,'');
+  return users.filter(v=>v.id!==u.id&&v.status!=='rejected'&&v.status!=='merged'&&(
+    (u.phone&&v.phone&&u.phone.replace(/\D/g,'').slice(-7)===v.phone.replace(/\D/g,'').slice(-7))||
+    (u.name_en&&v.name_en&&nm0(u.name_en)===nm0(v.name_en))||
+    (nm0(u.name).length>=2&&nm0(v.name).length>=2&&(nm0(u.name).includes(nm0(v.name))||nm0(v.name).includes(nm0(u.name))))));
+}
+let mergeSrc=null;
+const MERGE_COLS=[['expenses',['person','created_by','petty_from']],['petty_cash',['giver','receiver','created_by']],['incomes',['payee','payer']],['account_transfers',['created_by']]];
+function openMerge(id){
+  const u=users.find(x=>x.id===id);if(!u)return;mergeSrc=u;
+  document.getElementById('mg-src').textContent=u.name+(u.phone?' （📱 '+u.phone+'）':'');
+  const dups=dupOf(u).map(v=>v.id);
+  const tg=users.filter(v=>v.id!==u.id&&(v.status||'active')==='active').sort((a,b)=>(dups.includes(b.id)?1:0)-(dups.includes(a.id)?1:0)||(b.role==='admin')-(a.role==='admin'));
+  document.getElementById('mg-tgt').innerHTML=tg.map(v=>`<option value="${v.id}">${v.name}${v.role==='admin'?'（管理员）':''}${dups.includes(v.id)?' ← 可能是同一人':''}</option>`).join('');
+  previewMerge();document.getElementById('modal-merge').classList.add('open');
+}
+function previewMerge(){
+  const src=mergeSrc.name,tgt=users.find(v=>v.id===document.getElementById('mg-tgt').value);
+  const local={expenses,petty_cash:pettyCash,incomes,account_transfers:transfers};
+  const lines=MERGE_COLS.map(([t,cols])=>{const n=(local[t]||[]).filter(r=>cols.some(c=>r[c]===src)).length;return n?`${{expenses:'支出',petty_cash:'备用金',incomes:'收入',account_transfers:'存取互转'}[t]} ${n} 条`:'';}).filter(Boolean);
+  const op=parseFloat((opening.petty||{})[src])||0;
+  document.getElementById('mg-preview').innerHTML=`要移到「${tgt?tgt.name:''}」名下的记录：${lines.length?lines.join('，'):'没有'}`+(op?`<br>期初备用金 ${fmtAED(op)} 也一起并过去`:'')+
+    `<br><span style="color:#999">（统计的是你现在能看到的记录，实际以数据库为准）</span>`;
+}
+async function doMerge(){
+  const src=mergeSrc.name,tgtU=users.find(v=>v.id===document.getElementById('mg-tgt').value);if(!tgtU)return;
+  const tgt=tgtU.name;
+  if(!confirm(`确认把「${src}」合并到「${tgt}」？`))return;
+  const btn=document.getElementById('mg-go');btn.disabled=true;btn.textContent='合并中…';
+  const log={at:new Date().toISOString(),by:currentUser.name,src,tgt,src_id:mergeSrc.id,changed:{}};
+  try{
+    for(const [t,cols] of MERGE_COLS)for(const c of cols){
+      const{data,error}=await sb.from(t).update({[c]:tgt}).eq(c,src).select('id');
+      if(error&&!/column|does not exist/i.test(error.message))throw error;
+      if(data&&data.length)log.changed[t+'.'+c]=data.map(r=>r.id);
+    }
+    const op=JSON.parse(JSON.stringify(opening));const v=parseFloat((op.petty||{})[src])||0;
+    if(v){op.petty=op.petty||{};if(isFundOwner(tgt)){op.accounts=op.accounts||{};op.accounts['现金']=(parseFloat(op.accounts['现金'])||0)+v;}else op.petty[tgt]=(parseFloat(op.petty[tgt])||0)+v;
+      delete op.petty[src];log.opening_moved=v;await sb.from('ledger_settings').upsert({key:'opening',value:op,updated_at:new Date().toISOString()});}
+    const{error:ue}=await sb.from('users').update({status:'merged',name_en:`→ ${tgt}`}).eq('id',mergeSrc.id);if(ue)throw ue;
+    const{data:lg}=await sb.from('ledger_settings').select('value').eq('key','merge_log');
+    await sb.from('ledger_settings').upsert({key:'merge_log',value:[...((lg&&lg[0]&&lg[0].value)||[]),log],updated_at:new Date().toISOString()});
+    const n=Object.values(log.changed).reduce((s,a)=>s+a.length,0);
+    closeModals();alert(`✅ 已合并：${n} 处记录改到「${tgt}」名下，「${src}」已停用。`);
+    await loadAll();
+  }catch(e){alert('合并没有完成：'+(e.message||e)+'\n已经改过的部分保留，可以再点一次合并继续。');}
+  finally{btn.disabled=false;btn.textContent='确认合并 / Merge';}
+}
 function renderAdmin(){
   if(!currentUser||currentUser.role!=='admin')return;
   const tb=document.getElementById('perm-body');
   const rank=u=>u.status==='pending'?0:1;
-  tb.innerHTML=users.filter(u=>u.status!=='rejected').sort((a,b)=>rank(a)-rank(b)).map(u=>u.status==='pending'?`<tr style="background:#fffbe6;">
+  const dupBanner=users.filter(u=>u.status!=='rejected'&&u.status!=='merged'&&u.role!=='admin'&&dupOf(u).length);
+  tb.innerHTML=users.filter(u=>u.status!=='rejected'&&u.status!=='merged').sort((a,b)=>rank(a)-rank(b)).map(u=>u.status==='pending'?`<tr style="background:#fffbe6;">
     <td style="font-weight:500;">${u.name}${u.name_en?` <span style="color:#888;font-weight:400;">${u.name_en}</span>`:''}<div style="font-size:11px;color:#888;">📱 ${u.phone||'-'} · ${L('待审核','Pending')}</div></td>
     <td colspan="3" style="text-align:right;white-space:nowrap;"><button class="btn btn-s btn-sm" onclick="approveUser('${u.id}',false)">${L('拒绝','Reject')}</button> <button class="btn btn-p btn-sm" onclick="approveUser('${u.id}',true)">${L('通过','Approve')}</button></td>
   </tr>`:`<tr>
     <td style="font-weight:500;">${u.name==='司机'&&u.driver_id!=null?userLabel(u):u.name}${u.phone?`<div style="font-size:11px;color:#888;font-weight:400;">📱 ${u.phone}</div>`:''}</td>
     <td><span style="font-size:12px;color:${u.role==='admin'?'#d46b08':'#888'};">${u.role==='admin'?(lang==='zh'?'管理员 / Admin':'Admin'):(lang==='zh'?'成员':'Member')}</span></td>
     <td>${u.role==='admin'?`<span style="font-size:12px;color:#aaa;">${lang==='zh'?'全部可见':'Full access'}</span>`:`<label class="toggle"><input type="checkbox" ${u.can_view_all?'checked':''} onchange="togglePerm('${u.id}',this.checked)"><span class="slider"></span></label>`}</td>
-    <td><button class="btn btn-s btn-sm" onclick="openPwd('${u.id}','${u.name}')">${lang==='zh'?'改密码':'Change'}</button></td>
+    <td style="white-space:nowrap;"><button class="btn btn-s btn-sm" onclick="openPwd('${u.id}','${u.name}')">${lang==='zh'?'改密码':'Change'}</button>${u.role!=='admin'?` <button class="btn btn-s btn-sm" style="${dupOf(u).length?'color:#cf1322;border-color:#ffa39e;':''}" onclick="openMerge('${u.id}')">${L('合并','Merge')}</button>`:''}${dupOf(u).length&&u.role!=='admin'?`<div style="font-size:11px;color:#cf1322;margin-top:2px;">⚠️ ${L('可能和','Maybe same as')} ${dupOf(u).map(v=>v.name).join('、')} ${L('重复','')}</div>`:''}</td>
   </tr>`).join('');
+  const ab=document.getElementById('dup-banner');
+  if(ab){ab.style.display=dupBanner.length?'block':'none';ab.innerHTML=`⚠️ ${L('发现可能重复的账号','Possible duplicate accounts')}：`+dupBanner.map(u=>`<b>${u.name}</b> ↔ ${dupOf(u).map(v=>v.name).join('、')}`).join('；')+`。${L('点该行的「合并」处理。','Use “Merge” on that row.')}`;}
 }
 
 function renderExport(){
@@ -1850,7 +1921,7 @@ function getPettyBalance(name){
 function onPcGiverChange(){
   const g=getPc('pc-giver'),giver=g.person;
   const hint=document.getElementById('pc-balance-hint');
-  if(!giver||giver==='徐慧'||pettyMode==='receive'){hint.style.display='none';return;}
+  if(!giver||isFundOwner(giver)||pettyMode==='receive'){hint.style.display='none';return;}
   const bal=g.driverId!=null?driverBalance(g.driverId):getPettyBalance(giver);
   hint.style.display='block';
   hint.textContent=`${g.driverId!=null?drvLabel({name:driverNameById(g.driverId)}):giver} 当前备用金 / Petty Cash Balance：AED ${bal.toFixed(2)}`;
@@ -2056,7 +2127,7 @@ function setPc(id,person,driverId){
   }
   s.value=v;
 }
-function meVal(){return myDriverId()!=null?'drv:'+myDriverId():currentUser.name;}
+function meVal(){return myDriverId()!=null?'drv:'+myDriverId():(currentUser.role==='admin'?'徐慧':currentUser.name);}
 function driverOpening(id){return parseFloat((opening.drivers||{})[id])||0;}
 function driverIsD(id){return b=>String(b.driver_id)===String(id);}
 function driverIn(id){return sumAmt(pettyCash.filter(b=>afterStart(b)&&driverIsD(id)(b)&&b.receiver==='司机'&&b.giver!=='司机'));}
@@ -2149,7 +2220,7 @@ async function savePetty(){
   if(giver===receiver&&(giver!=='司机'||String(G.driverId)===String(R.driverId))){alert('发放人和收款人不能是同一人 / Giver and receiver cannot be the same');return;}
   if(giver==='司机'&&receiver==='司机'){alert('司机之间转钱请分两笔：先退给发放人，再发给另一位司机 / Driver-to-driver: record as two transfers');return;}
   // Check giver's balance only when issuing (receiver self-reporting is not blocked)
-  if(pettyMode==='give'&&giver!=='徐慧'&&!editPettyId){
+  if(pettyMode==='give'&&!isFundOwner(giver)&&!editPettyId){
     const bal=G.driverId!=null?driverBalance(G.driverId):getPettyBalance(giver);
     if(amount>bal){
       alert(lang==='zh'?`余额 / Balance不足！${giver}当前备用金 / Petty Cash Balance AED ${bal.toFixed(2)}`:`Insufficient balance! ${giver} has AED ${bal.toFixed(2)}`);
@@ -2206,7 +2277,7 @@ async function savePwd(){
 }
 
 function closeModals(){
-  ['modal-expense','modal-income','modal-petty','modal-pwd','modal-opening','modal-xfer','modal-adv'].forEach(id=>document.getElementById(id).classList.remove('open'));
+  ['modal-expense','modal-income','modal-petty','modal-pwd','modal-opening','modal-xfer','modal-adv','modal-merge'].forEach(id=>document.getElementById(id).classList.remove('open'));
 }
 
 /* ── Lightbox ── */
