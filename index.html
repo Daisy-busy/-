@@ -314,6 +314,7 @@ input:checked+.slider:before{transform:translateX(18px);}
   </div>
 
   <div id="tab-expense" class="sec">
+    <div id="prepaid-used" style="display:none;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px;color:#237804;"></div>
     <div id="adv-outstanding" style="display:none;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px;color:#ad4e00;"></div>
     <div class="filter-row">
       <select id="fm1" onchange="renderExpense()"><option value="">全部 / All Months</option></select>
@@ -1058,7 +1059,10 @@ async function loadAll(){
     if(results[2].error)throw results[2].error;
 
     // Normalize payment labels saved by older versions (e.g. '备用金 / Petty Cash' → '备用金')
-    expenses=(results[0].data||[]).map(b=>({...b,payment:normPay(b.payment),person:/^徐慧/.test(b.person||'')?'徐慧':b.person}));
+    const allExp=(results[0].data||[]).map(b=>({...b,payment:normPay(b.payment),person:/^徐慧/.test(b.person||'')?'徐慧':b.person}));
+    // Covered by an earlier top-up that was already booked as an expense → keep for reference only, never count again
+    prepaidUsed=allExp.filter(isPrepaidCovered);
+    expenses=allExp.filter(b=>!isPrepaidCovered(b));
     incomes=results[1].data||[];
     pettyCash=results[2].data||[];
     if(isAdmin){users=results[3]?.data||[];updatePendingBadge();
@@ -1119,7 +1123,7 @@ function onGlobalMonthChange(){
   render();
 }
 
-function render(){renderAdvOutstanding();renderMetrics();renderAll();renderExpense();renderIncome();renderPetty();renderSummary();renderExport();renderAdmin();syncSelects();}
+function render(){renderAdvOutstanding();renderPrepaidUsed();renderMetrics();renderAll();renderExpense();renderIncome();renderPetty();renderSummary();renderExport();renderAdmin();syncSelects();}
 
 function fmtAED(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 
@@ -2066,6 +2070,20 @@ function pettyOwner(b){return b.petty_from||b.person;}
    (Drivers' own petty-cash spending still follows the fleet balance.) */
 /* Fleet rule: a driver's expense comes off HIS balance unless it was reimbursed (报销) — then it comes off whoever reimbursed it.
    Manual ledger entries by a driver only touch his balance when paid with petty cash. */
+let prepaidUsed=[];
+function isPrepaidCovered(b){return b.source==='fleet'&&(b.payment==='预付'||/预充值抵扣/.test(b.note||''));}
+function renderPrepaidUsed(){
+  const el=document.getElementById('prepaid-used');if(!el)return;
+  const fm=document.getElementById('global-month')?.value||'';
+  const list=prepaidUsed.filter(b=>!fm||(b.date||'').startsWith(fm));
+  if(!list.length){el.style.display='none';return;}
+  const by={};list.forEach(b=>{const k=b.person||'';by[k]=by[k]||{n:0,s:0};by[k].n++;by[k].s+=toAED(b);});
+  el.style.display='block';
+  el.innerHTML=`🔗 ${L('已用预充值抵扣（已含在之前的充值里，不重复计入）','Covered by an earlier top-up (not counted again)')}：`+
+    Object.entries(by).map(([k,v])=>`<b>${nm(k)}</b> ${v.n} ${L('笔','items')} AED ${fmtAED(v.s)}`).join(' · ')+
+    ` <a href="javascript:void(0)" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="color:#1677ff;">${L('明细','details')}</a><div style="display:none;margin-top:6px;">`+
+    list.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(b=>`<div>${b.date} · ${b.merchant||''} · ${nm(b.person)} · AED ${fmtAED(toAED(b))}</div>`).join('')+'</div>';
+}
 function settledFleet(b){return b.source==='fleet'&&/已报销/.test(b.note||'');}
 function driverCharged(b){return b.person==='司机'&&(b.source==='fleet'?!settledFleet(b):(isPettyPay(b.payment)&&!b.petty_from));}
 /* Someone else (not a driver) paid out of pocket and is waiting to be reimbursed: a cost, but no account has paid yet */
