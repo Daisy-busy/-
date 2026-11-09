@@ -493,6 +493,10 @@ input:checked+.slider:before{transform:translateX(18px);}
       <div class="fg"></div>
     </div>
     <div class="fg" style="margin-bottom:0;"><label class="t-note">备注 / Note</label><textarea id="e-note" rows="2"></textarea></div>
+    <label id="e-prepaid-box" style="display:none;align-items:flex-start;gap:8px;margin-top:10px;font-size:13px;color:#237804;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:8px 10px;cursor:pointer;">
+      <input type="checkbox" id="e-prepaid" style="margin-top:2px;width:auto;">
+      <span>这笔是<b>预充值</b>（如 du 停车话费、Salik）：这个人之后的「<span id="e-prepaid-cat">停车费</span>」从这里自动抵扣，不再重复算支出<br><span style="color:#888;">Prepaid top-up: later costs of this type are covered from it automatically</span></span>
+    </label>
     <div class="actions">
       <button class="btn btn-s t-cancel" onclick="closeModals()">取消 / Cancel</button>
       <button class="btn btn-p" id="expense-save-btn" onclick="saveExpense()"><span class="t-save-expense">保存 / Save Expense</span></button>
@@ -1061,6 +1065,7 @@ async function loadAll(){
     // Normalize payment labels saved by older versions (e.g. '备用金 / Petty Cash' → '备用金')
     const allExp=(results[0].data||[]).map(b=>({...b,payment:normPay(b.payment),person:/^徐慧/.test(b.person||'')?'徐慧':b.person}));
     // Covered by an earlier top-up that was already booked as an expense → keep for reference only, never count again
+    applyPrepaid(allExp);
     prepaidUsed=allExp.filter(isPrepaidCovered);
     expenses=allExp.filter(b=>!isPrepaidCovered(b));
     incomes=results[1].data||[];
@@ -1123,7 +1128,7 @@ function onGlobalMonthChange(){
   render();
 }
 
-function render(){renderAdvOutstanding();renderPrepaidUsed();renderMetrics();renderAll();renderExpense();renderIncome();renderPetty();renderSummary();renderExport();renderAdmin();syncSelects();}
+function render(){resplitPrepaid();renderAdvOutstanding();renderPrepaidUsed();renderMetrics();renderAll();renderExpense();renderIncome();renderPetty();renderSummary();renderExport();renderAdmin();syncSelects();}
 
 function fmtAED(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 
@@ -1277,6 +1282,7 @@ function renderPetty(){
       ${givenOut>0?`<div class="row"><span>转出 / Out</span><span>${fmtAED(givenOut)}</span></div>`:''}
       <div class="row"><span>${t('used')}</span><span>${fmtAED(spent)}</span></div>
       <div class="balance ${bal>0?'balance-pos':bal<0?'balance-neg':'balance-zero'}">${L('余额','Balance')} ${fmtAED(bal)}</div>
+      ${prepaidWallets[iniName]&&!String(label).includes('司机')?`<div style="font-size:12px;color:#237804;margin-top:4px;">🔗 ${L('预充值','Prepaid')}（${[...prepaidWallets[iniName].cats].join('、')}）${L('剩余','left')} ${fmtAED(prepaidWallets[iniName].remaining)} / ${fmtAED(prepaidWallets[iniName].total)}</div>`:''}
     </div>`;
   grid.innerHTML=members.map(m=>{
     if(m.k==='d'){
@@ -1587,6 +1593,27 @@ async function recognizeWithAI(dataUrl,type,mode){
 const SALARY_DEFAULT=[['Anna',2500],['Dora',2000],['Mayat',3000],['Ali',3800],['曹立强',3300],['园丁',200]];
 const PAYROLL_TAG='工资明细 / Payroll: ';
 const ADV_TAG='扣预支 / Advances deducted: ';
+const PREPAID_TAG='预充值 / Prepaid: ';
+/* A top-up (du phone credit for SMS parking, Salik…) booked once as an expense. Later fleet costs of the same person
+   and category are covered from it in date order — like 「备用金够付」 — and are never counted again. */
+function prepaidCats(b){const l=(b.note||'').split('\n').find(x=>x.startsWith(PREPAID_TAG));return l?l.slice(PREPAID_TAG.length).split(/[,，、]/).map(s=>s.trim()).filter(Boolean):null;}
+function fleetMarkedPrepaid(b){return b.source==='fleet'&&(b.payment==='预付'||/预充值抵扣/.test(b.note||''));}
+let prepaidWallets={};   // person -> {total, used, remaining, cats, from}
+function applyPrepaid(all){
+  prepaidWallets={};all.forEach(b=>{delete b._prepaidAuto;});
+  all.filter(b=>prepaidCats(b)).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(t=>{
+    const w=prepaidWallets[t.person]=prepaidWallets[t.person]||{total:0,used:0,cats:new Set(),from:t.date};
+    w.total+=toAED(t);prepaidCats(t).forEach(c=>w.cats.add(c));if((t.date||'')<w.from)w.from=t.date;
+  });
+  Object.entries(prepaidWallets).forEach(([p,w])=>{
+    w.used=all.filter(b=>b.person===p&&fleetMarkedPrepaid(b)).reduce((s,b)=>s+toAED(b),0);
+    const cand=all.filter(b=>b.person===p&&b.source==='fleet'&&w.cats.has(b.category)&&(b.date||'')>=w.from&&!settledFleet(b)&&!fleetMarkedPrepaid(b))
+      .sort((a,b)=>(a.date||'').localeCompare(b.date||'')||String(a.created_at||'').localeCompare(String(b.created_at||'')));
+    for(const b of cand){const a=toAED(b);if(w.used+a>w.total+0.004)break;b._prepaidAuto=true;w.used+=a;}
+    w.remaining=w.total-w.used;
+  });
+}
+function resplitPrepaid(){const all=expenses.concat(prepaidUsed);applyPrepaid(all);prepaidUsed=all.filter(isPrepaidCovered);expenses=all.filter(b=>!isPrepaidCovered(b));}
 /* Advances: salary paid early. Stored as a 工资 expense with advance_for=<name>; the payroll that deducts it sets advance_deducted_by=<payroll id>. */
 function isAdvance(b){return !!b.advance_for;}
 function advancesFor(name,payrollId,payrollDate){
@@ -1717,6 +1744,7 @@ function fillSalaryRows(list){
 }
 
 function onCatChange(){
+  syncPrepaidBox();
   const isSalary=document.getElementById('e-cat').value==='工资';
   document.getElementById('salary-box').style.display=isSalary?'block':'none';
   if(isSalary){
@@ -1733,6 +1761,7 @@ async function openAdd(){
   document.getElementById('expense-title').textContent=t('add-expense-title');
   document.getElementById('expense-save-btn').querySelector('span').textContent=t('save-expense');
   ['e-merchant','e-amount','e-note'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('e-prepaid').checked=false;setTimeout(syncPrepaidBox,0);
   document.getElementById('e-person').value=currentUser?.name||'';
   document.getElementById('e-cat').value='买菜';document.getElementById('e-currency').value='AED';
   document.getElementById('conv-box').style.display='none';
@@ -1754,7 +1783,8 @@ function editExpense(id){
   document.getElementById('e-currency').value=b.currency||'AED';
   document.getElementById('e-person').value=b.person||'';ensureCatOption(b.category);document.getElementById('e-cat').value=b.category||'买菜';
   document.getElementById('e-date').value=b.date||'';document.getElementById('e-pay').value=b.payment||'WIO';
-  document.getElementById('e-status').value=b.status||'已确认';document.getElementById('e-note').value=b.note||'';
+  document.getElementById('e-status').value=b.status||'已确认';document.getElementById('e-note').value=(b.note||'').split('\n').filter(l=>!l.startsWith(PREPAID_TAG)).join('\n');
+  document.getElementById('e-prepaid').checked=!!prepaidCats(b);syncPrepaidBox();
   document.getElementById('ai-box-e').style.display='none';onAmountChange();
   document.getElementById('e-pf').innerHTML='';onEPayChange();if(b.petty_from)document.getElementById('e-pf').value=b.petty_from;
   // Payroll: show saved breakdown; old salary records without one keep their amount untouched
@@ -1772,7 +1802,8 @@ function editExpense(id){
 async function saveExpense(){
   const merchant=document.getElementById('e-merchant').value.trim(),amount=document.getElementById('e-amount').value,person=document.getElementById('e-person').value;
   if(!merchant||!amount||!person){alert(lang==='zh'?'请填写商家、金额和消费人':'Please fill merchant, amount and person');return;}
-  let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)&&!l.startsWith(ADV_TAG)).join('\n').trim();
+  let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)&&!l.startsWith(ADV_TAG)&&!l.startsWith(PREPAID_TAG)).join('\n').trim();
+  {const c0=document.getElementById('e-cat').value;if(document.getElementById('e-prepaid').checked&&c0!=='工资')note=(note?note+'\n':'')+PREPAID_TAG+c0;}
   const cat=document.getElementById('e-cat').value;
   const chargedElsewhere=document.getElementById('e-pf-box').style.display!=='none'&&document.getElementById('e-pf').value&&document.getElementById('e-pf').value!==person;
   if(!editExpenseId&&cat!=='工资'&&!chargedElsewhere){
@@ -1821,7 +1852,7 @@ async function saveExpense(){
     if(error){alert('保存失败：'+error.message);return;}
     if(data){expenses.unshift(data);if(cat==='工资'&&sal.length)await linkAdvances(data.id,typeof deds!=='undefined'?deds:[]);}
   }
-  closeModals();render();
+  closeModals();resplitPrepaid();render();
 }
 
 async function linkAdvances(payrollId,deds){
@@ -2071,7 +2102,7 @@ function pettyOwner(b){return b.petty_from||b.person;}
 /* Fleet rule: a driver's expense comes off HIS balance unless it was reimbursed (报销) — then it comes off whoever reimbursed it.
    Manual ledger entries by a driver only touch his balance when paid with petty cash. */
 let prepaidUsed=[];
-function isPrepaidCovered(b){return b.source==='fleet'&&(b.payment==='预付'||/预充值抵扣/.test(b.note||''));}
+function isPrepaidCovered(b){return !!b._prepaidAuto||fleetMarkedPrepaid(b);}
 function renderPrepaidUsed(){
   const el=document.getElementById('prepaid-used');if(!el)return;
   const fm=document.getElementById('global-month')?.value||'';
@@ -2080,7 +2111,7 @@ function renderPrepaidUsed(){
   const by={};list.forEach(b=>{const k=b.person||'';by[k]=by[k]||{n:0,s:0};by[k].n++;by[k].s+=toAED(b);});
   el.style.display='block';
   el.innerHTML=`🔗 ${L('已用预充值抵扣（已含在之前的充值里，不重复计入）','Covered by an earlier top-up (not counted again)')}：`+
-    Object.entries(by).map(([k,v])=>`<b>${nm(k)}</b> ${v.n} ${L('笔','items')} AED ${fmtAED(v.s)}`).join(' · ')+
+    Object.entries(by).map(([k,v])=>`<b>${nm(k)}</b> ${v.n} ${L('笔','items')} AED ${fmtAED(v.s)}`+(prepaidWallets[k]?`（${L('预充值剩余','left')} ${fmtAED(prepaidWallets[k].remaining)}）`:'')).join(' · ')+
     ` <a href="javascript:void(0)" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="color:#1677ff;">${L('明细','details')}</a><div style="display:none;margin-top:6px;">`+
     list.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(b=>`<div>${b.date} · ${b.merchant||''} · ${nm(b.person)} · AED ${fmtAED(toAED(b))}</div>`).join('')+'</div>';
 }
@@ -2099,6 +2130,12 @@ function hitsAccount(b){return !pendingReimb(b)&&!driverCharged(b);}
 function pendingReimbTotal(){return expenses.filter(b=>afterStart(b)&&pendingReimb(b)).reduce((s,b)=>s+toAED(b),0);}
 function pettySpent(name){if(name==='司机')return expenses.filter(b=>afterStart(b)&&driverCharged(b)).reduce((s,b)=>s+toAED(b),0);
   return expenses.filter(b=>afterStart(b)&&!pendingReimb(b)&&!driverCharged(b)&&pettyOwner(b)===name&&isPettyPay(b.payment)).reduce((s,b)=>s+toAED(b),0);}
+function syncPrepaidBox(){
+  const box=document.getElementById('e-prepaid-box');if(!box)return;
+  const cat=document.getElementById('e-cat').value;
+  box.style.display=currentUser?.role==='admin'&&cat!=='工资'?'flex':'none';
+  document.getElementById('e-prepaid-cat').textContent=catLabel(cat).split(' / ')[0];
+}
 function onEPayChange(personChanged){
   const box=document.getElementById('e-pf-box'),sel=document.getElementById('e-pf');
   const show=currentUser?.role==='admin'&&isPettyPay(document.getElementById('e-pay').value);
