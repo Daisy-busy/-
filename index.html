@@ -456,7 +456,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     </div>
     <div class="frow">
       <div class="fg"><label class="t-person">消费人 / Person *</label>
-        <select id="e-person" onchange="onEPayChange(true)"><option value="">请选择 / Select</option>
+        <select id="e-person" onchange="onEPayChange(true);syncPrepaidBox()"><option value="">请选择 / Select</option>
           <option value="刘承林">刘承林 / Liu Chenglin</option><option value="保姆">保姆 / Nanny</option><option value="徐慧">徐慧 / Xu Hui</option><option value="司机">司机 / Driver</option><option value="杨文辉">杨文辉 / Yang Wenhui</option>
         </select>
       </div>
@@ -495,7 +495,8 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div class="fg" style="margin-bottom:0;"><label class="t-note">备注 / Note</label><textarea id="e-note" rows="2"></textarea></div>
     <label id="e-prepaid-box" style="display:none;align-items:flex-start;gap:8px;margin-top:10px;font-size:13px;color:#237804;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:8px 10px;cursor:pointer;">
       <input type="checkbox" id="e-prepaid" style="margin-top:2px;width:auto;">
-      <span>这笔是<b>预充值</b>（如 du 停车话费、Salik）：这个人之后的「<span id="e-prepaid-cat">停车费</span>」从这里自动抵扣，不再重复算支出<br><span style="color:#888;">Prepaid top-up: later costs of this type are covered from it automatically</span></span>
+      <span><b>这是一笔停车话费充值</b>（du，发短信交停车费用）<br>
+      <span id="e-prepaid-explain" style="color:#555;"></span></span>
     </label>
     <div class="actions">
       <button class="btn btn-s t-cancel" onclick="closeModals()">取消 / Cancel</button>
@@ -1594,6 +1595,7 @@ const SALARY_DEFAULT=[['Anna',2500],['Dora',2000],['Mayat',3000],['Ali',3800],['
 const PAYROLL_TAG='工资明细 / Payroll: ';
 const ADV_TAG='扣预支 / Advances deducted: ';
 const PREPAID_TAG='预充值 / Prepaid: ';
+const PREPAID_CATS=['停车费'];   // only SMS parking is paid from phone credit (du top-up)
 /* A top-up (du phone credit for SMS parking, Salik…) booked once as an expense. Later fleet costs of the same person
    and category are covered from it in date order — like 「备用金够付」 — and are never counted again. */
 function prepaidCats(b){const l=(b.note||'').split('\n').find(x=>x.startsWith(PREPAID_TAG));return l?l.slice(PREPAID_TAG.length).split(/[,，、]/).map(s=>s.trim()).filter(Boolean):null;}
@@ -2133,8 +2135,13 @@ function pettySpent(name){if(name==='司机')return expenses.filter(b=>afterStar
 function syncPrepaidBox(){
   const box=document.getElementById('e-prepaid-box');if(!box)return;
   const cat=document.getElementById('e-cat').value;
-  box.style.display=currentUser?.role==='admin'&&cat!=='工资'?'flex':'none';
-  document.getElementById('e-prepaid-cat').textContent=catLabel(cat).split(' / ')[0];
+  const show=currentUser?.role==='admin'&&(PREPAID_CATS.includes(cat)||document.getElementById('e-prepaid').checked);
+  box.style.display=show?'flex':'none';if(!show)return;
+  const who=document.getElementById('e-person').value||L('消费人','this person');
+  const c=catLabel(cat).split(' / ')[0];
+  document.getElementById('e-prepaid-explain').innerHTML=L(
+    `勾上：${nm(who)} 以后在用车系统报的停车费，会先从这笔话费里扣，扣完为止。扣掉的不会再算一次支出。<br>不勾：就是一笔普通的停车费。`,
+    `Ticked: ${nm(who)}'s later parking from the Fleet app is paid out of this phone credit until it runs out, and is not counted again.<br>Not ticked: an ordinary parking expense.`);
 }
 function onEPayChange(personChanged){
   const box=document.getElementById('e-pf-box'),sel=document.getElementById('e-pf');
