@@ -450,7 +450,7 @@ input:checked+.slider:before{transform:translateX(18px);}
         <label class="t-amount">金额 / Amount *</label>
         <div class="amt-row">
           <select id="e-currency" onchange="onCurrencyChange()"><option value="AED">AED</option><option value="CNY">CNY</option></select>
-          <input type="number" id="e-amount" placeholder="0.00" step="0.01" min="0" oninput="onAmountChange()">
+          <input type="text" inputmode="decimal" id="e-amount" class="calc-amt" placeholder="0.00" oninput="onAmountChange()">
         </div>
         <div class="conv-box" id="conv-box">💱 → <span id="conv-result" style="font-weight:600;"></span> AED</div>
       </div>
@@ -523,7 +523,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     </div>
     <div class="frow">
       <div class="fg"><label class="t-payee">收款人 / Payee *</label><select id="i-payee" onchange="onPartySel('i-payee')"></select><input type="text" id="i-payee-other" placeholder="输入名字 / Name" style="display:none;margin-top:6px;"></div>
-      <div class="fg"><label class="t-amount-aed">金额（AED）*</label><input type="number" id="i-amount" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="fg"><label class="t-amount-aed">金额（AED）*</label><input type="text" inputmode="decimal" id="i-amount" class="calc-amt" placeholder="0.00"></div>
     </div>
     <div class="frow">
       <div class="fg"><label class="t-date">日期 / Date</label><input type="date" id="i-date"></div>
@@ -541,6 +541,27 @@ input:checked+.slider:before{transform:translateX(18px);}
 </div>
 
 <!-- 备用金弹窗 -->
+<div class="overlay" id="modal-calc" style="z-index:400;">
+  <div class="modal" style="width:380px;">
+    <div class="mhd"><h3>🧮 分笔相加 / Add up</h3><button class="close-btn" onclick="closeCalc()">×</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+      <input type="text" inputmode="decimal" id="calc-in" placeholder="输入一笔金额 / amount" style="flex:1;min-width:0;font-size:18px;padding:10px 12px;border:1px solid #d9d9d9;border-radius:10px;">
+      <button type="button" class="btn btn-p" style="font-size:18px;padding:0 16px;" onclick="calcAdd(1)">＋</button>
+      <button type="button" class="btn btn-s" style="font-size:18px;padding:0 16px;" onclick="calcAdd(-1)" title="退款 / 减去">−</button>
+    </div>
+    <div style="font-size:11px;color:#999;margin-bottom:8px;">输完一笔点「＋」；退款点「−」。也可以把银行流水里的几笔金额直接粘贴进来。<br>Tap + after each amount, − for refunds. You can also paste several amounts.</div>
+    <div id="calc-list" style="max-height:38vh;overflow-y:auto;border:1px solid #f0f0f0;border-radius:10px;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin:12px 2px;">
+      <span style="color:#888;font-size:13px;" id="calc-count"></span>
+      <span style="font-size:26px;font-weight:700;">= <span id="calc-total">0.00</span></span>
+    </div>
+    <div class="actions" style="margin-top:0;">
+      <button type="button" class="btn btn-s" onclick="calcItems=[];renderCalc()">清空 / Clear</button>
+      <button type="button" class="btn btn-p" onclick="calcFill()">填入金额 / Use total</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-merge">
   <div class="modal" style="width:400px;">
     <div class="mhd"><h3>合并账号 / Merge Accounts</h3><button class="close-btn" onclick="closeModals()">×</button></div>
@@ -561,7 +582,7 @@ input:checked+.slider:before{transform:translateX(18px);}
     <div style="font-size:12px;color:#888;margin-bottom:12px;">预支的钱下次发工资时自动扣除。<br>Advances are deducted automatically on the next payroll.</div>
     <div class="fg"><label>预支给谁 / Who *</label><select id="a-name" onchange="onPartySel('a-name')"></select><input type="text" id="a-name-other" placeholder="输入名字 / Name" style="display:none;margin-top:6px;"></div>
     <div class="frow">
-      <div class="fg"><label>金额（AED）*</label><input type="number" id="a-amount" step="0.01" min="0" placeholder="0.00"></div>
+      <div class="fg"><label>金额（AED）*</label><input type="text" inputmode="decimal" id="a-amount" class="calc-amt" placeholder="0.00"></div>
       <div class="fg"><label>日期 / Date</label><input type="date" id="a-date"></div>
     </div>
     <div class="fg"><label>谁付的 / Paid from</label><select id="a-pay"><option value="现金">现金 / Cash</option><option value="WIO">WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option><option value="保姆备用金">保姆备用金 / Nanny petty cash</option></select></div>
@@ -588,7 +609,7 @@ input:checked+.slider:before{transform:translateX(18px);}
       <div class="fg"><label>到 / To *</label><select id="x-to" onchange="syncXferMode()"><option value="现金">现金 / Cash</option><option value="WIO" selected>WIO</option><option value="FAB">FAB</option><option value="NBD">NBD</option></select></div>
     </div>
     <div class="frow">
-      <div class="fg"><label>金额（AED）*</label><input type="number" id="x-amount" step="0.01" min="0" placeholder="0.00"></div>
+      <div class="fg"><label>金额（AED）*</label><input type="text" inputmode="decimal" id="x-amount" class="calc-amt" placeholder="0.00"></div>
       <div class="fg"><label>日期 / Date</label><input type="date" id="x-date"></div>
     </div>
     <div class="fg"><label>备注 / Note</label><input type="text" id="x-note" placeholder="例：U 换的现金存入 WIO"></div>
@@ -644,7 +665,7 @@ input:checked+.slider:before{transform:translateX(18px);}
       <div style="font-size:12px;color:#888;margin-top:4px;">会同步到用车系统该司机名下 / Syncs to this driver in Fleet</div>
     </div>
     <div class="frow">
-      <div class="fg"><label class="t-amount-aed">金额（AED）*</label><input type="number" id="pc-amount" placeholder="0.00" step="0.01" min="0" oninput="onPcAmountChange()"></div>
+      <div class="fg"><label class="t-amount-aed">金额（AED）*</label><input type="text" inputmode="decimal" id="pc-amount" class="calc-amt" placeholder="0.00" oninput="onPcAmountChange()"></div>
       <div class="fg"><label class="t-date">日期 / Date</label><input type="date" id="pc-date"></div>
     </div>
     <div class="fg" style="margin-bottom:0;"><label class="t-note">备注 / Note</label><textarea id="pc-note" rows="2"></textarea></div>
@@ -950,6 +971,70 @@ function driverNameById(id){const d=fleetDrivers.find(x=>String(x.id)===String(i
 function driverLoginLabel(u){const cn=(driverNameById(u.driver_id)||'').match(/[\u4e00-\u9fff]+/);const zh=cn?cn[0]:'司机';return u.name_en?`${zh} / ${u.name_en}`:zh;}
 function holderLabel(n){return n==='司机'&&myDriverId()!=null?userLabel(currentUser):nm(n);}
 function userLabel(u){if(u&&u.name==='司机'&&u.driver_id!=null){const en=u.name_en||'';const cn=(driverNameById(u.driver_id)||'').match(/[\u4e00-\u9fff]+/);const zh=cn?cn[0]:(en||'司机');return lang==='en'?(en||zh):zh;}return u?nm(u.name):'';}
+/* ---------- amount maths: "163.40+61.66-7.14", pasted bank lines, or the 🧮 add-up panel ---------- */
+function calcExpr(raw){
+  let s=String(raw==null?'':raw).trim();if(!s)return null;
+  s=s.replace(/[×xX＊]/g,'*').replace(/[÷／]/g,'/').replace(/＋/g,'+').replace(/[－–—−]/g,'-').replace(/（/g,'(').replace(/）/g,')');
+  s=s.replace(/[^0-9+\-*/().,\s]/g,' ');                    // currency symbols, letters → gone
+  s=s.replace(/(\d),(?=\d{3}(\D|$))/g,'$1');                // thousands separators
+  s=s.replace(/(\d)\s+(?=[\d(])/g,'$1+');                   // numbers separated by spaces / new lines are added
+  s=s.replace(/[\s,]+/g,'');
+  if(!/^[0-9+\-*/().]+$/.test(s)||!/\d/.test(s))return null;
+  try{const v=Function('"use strict";return ('+s+')')();return isFinite(v)?Math.round(v*100)/100:null;}catch(e){return null;}
+}
+/* Split pasted text into separate amounts, keeping each one's sign: "159.94\n-Ð 58.77" → [159.94, -58.77] */
+function calcSplit(raw){
+  const s=String(raw||'').replace(/[－–—−]/g,'-').replace(/＋/g,'+').replace(/[^0-9+\-.,\s]/g,' ');
+  const out=[];const re=/([+-]?)\s*(\d[\d,]*(?:\.\d+)?)/g;let m;
+  while((m=re.exec(s))){const n=parseFloat(m[2].replace(/,(?=\d{3}(\D|$))/g,'').replace(/,/g,'.'));if(isFinite(n))out.push(m[1]==='-'?-n:n);}
+  return out;
+}
+function amtVal(id){const el=document.getElementById(id);if(!el)return 0;const v=calcExpr(el.value);return v==null?0:v;}
+function settleAmount(el){if(!el||!/[+\-*/\s]/.test(String(el.value).trim().replace(/^-/,'')))return;const v=calcExpr(el.value);if(v!=null){el.value=v;el.dispatchEvent(new Event('input'));}}
+let calcItems=[],calcTarget=null;
+function openCalc(id){
+  calcTarget=id;const cur=calcExpr(document.getElementById(id).value);
+  calcItems=cur?[cur]:[];document.getElementById('calc-in').value='';renderCalc();
+  document.getElementById('modal-calc').classList.add('open');setTimeout(()=>document.getElementById('calc-in').focus(),50);
+}
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.activeElement&&document.activeElement.id==='calc-in'){e.preventDefault();calcAdd(1);}});
+/* Pasting several lines from the bank app: single-line inputs drop line breaks, so split the clipboard text ourselves */
+document.addEventListener('paste',e=>{
+  if(!document.activeElement||document.activeElement.id!=='calc-in')return;
+  const t=(e.clipboardData||window.clipboardData)?.getData('text')||'';
+  const nums=calcSplit(t);if(nums.length<2)return;
+  e.preventDefault();nums.forEach(v=>calcItems.push(v));document.getElementById('calc-in').value='';renderCalc();
+});
+function closeCalc(){document.getElementById('modal-calc').classList.remove('open');}
+function calcAdd(sign){
+  const inp=document.getElementById('calc-in');const raw=inp.value.trim();if(!raw)return;
+  const nums=/[*/×÷()]/.test(raw)?[calcExpr(raw)].filter(v=>v!=null):calcSplit(raw);
+  nums.forEach(v=>calcItems.push(sign<0?-Math.abs(v):v));
+  inp.value='';renderCalc();inp.focus();
+}
+function renderCalc(){
+  const t=calcItems.reduce((s,v)=>s+v,0);
+  document.getElementById('calc-total').textContent=fmtAED(t);
+  document.getElementById('calc-count').textContent=calcItems.length?L(`共 ${calcItems.length} 笔`,`${calcItems.length} items`):'';
+  document.getElementById('calc-list').innerHTML=calcItems.length?calcItems.map((v,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-bottom:1px solid #f5f5f5;font-size:15px;">
+      <span style="color:#bbb;font-size:12px;width:24px;">${i+1}</span><b style="flex:1;text-align:right;color:${v<0?'#389e0d':'#222'};">${v<0?'− '+fmtAED(-v):fmtAED(v)}</b>
+      <button type="button" onclick="calcItems.splice(${i},1);renderCalc()" style="background:none;border:none;color:#bbb;font-size:18px;margin-left:10px;cursor:pointer;">×</button></div>`).join(''):
+    `<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">${L('还没有输入','Nothing yet')}</div>`;
+}
+function calcFill(){
+  const el=document.getElementById(calcTarget);if(!el)return;
+  const t=Math.round(calcItems.reduce((s,v)=>s+v,0)*100)/100;
+  el.value=t?t:'';el.dispatchEvent(new Event('input'));closeCalc();
+}
+function setupCalcFields(){
+  document.querySelectorAll('input.calc-amt').forEach(el=>{
+    if(el.dataset.calc)return;el.dataset.calc='1';
+    el.addEventListener('blur',()=>settleAmount(el));
+    el.addEventListener('keydown',e=>{if(e.key==='Enter')settleAmount(el);});
+    const host=el.closest('.amt-row')||el;
+    host.insertAdjacentHTML('afterend',`<a href="javascript:void(0)" class="calc-link" onclick="openCalc('${el.id}')" style="display:inline-block;margin-top:5px;font-size:12px;color:#1677ff;text-decoration:none;">🧮 ${L('分笔相加','Add up')}</a>`);
+  });
+}
 function toAED(b){const a=parseFloat(b.amount||0);return b.currency==='CNY'?a/CNY_RATE:a;}
 
 async function doLogin(){
@@ -1492,7 +1577,7 @@ function switchTab(t,el){
 /* ── Currency ── */
 function onCurrencyChange(){onAmountChange();}
 function onAmountChange(){
-  const cur=document.getElementById('e-currency').value,amt=parseFloat(document.getElementById('e-amount').value||0);
+  const cur=document.getElementById('e-currency').value,amt=amtVal('e-amount');
   const box=document.getElementById('conv-box');
   if(cur==='CNY'&&amt>0){document.getElementById('conv-result').textContent=(amt/CNY_RATE).toFixed(2);box.style.display='block';}
   else box.style.display='none';
@@ -1654,7 +1739,7 @@ function editAdvance(b){
   document.getElementById('modal-adv').classList.add('open');
 }
 async function saveAdvance(){
-  const name=getParty('a-name'),amount=parseFloat(document.getElementById('a-amount').value||0),pay=document.getElementById('a-pay').value;
+  const name=getParty('a-name'),amount=amtVal('a-amount'),pay=document.getElementById('a-pay').value;
   if(!name||!amount){alert(L('请选择人员并填写金额','Please choose the person and amount'));return;}
   const fromNanny=pay==='保姆备用金';
   const row={merchant:`预支工资 · ${name}`,amount,currency:'AED',person:fromNanny?'保姆':'徐慧',category:'工资',
@@ -1809,7 +1894,7 @@ function editExpense(id){
 }
 
 async function saveExpense(){
-  const merchant=document.getElementById('e-merchant').value.trim(),amount=document.getElementById('e-amount').value,person=document.getElementById('e-person').value;
+  const merchant=document.getElementById('e-merchant').value.trim(),amount=(amtVal('e-amount')||'')+'',person=document.getElementById('e-person').value;
   if(!merchant||!amount||!person){alert(lang==='zh'?'请填写商家、金额和消费人':'Please fill merchant, amount and person');return;}
   let note=document.getElementById('e-note').value.split('\n').filter(l=>!l.startsWith(PAYROLL_TAG)&&!l.startsWith(ADV_TAG)&&!l.startsWith(PREPAID_TAG)).join('\n').trim();
   {const c0=document.getElementById('e-cat').value;if(document.getElementById('e-prepaid').checked&&c0!=='工资')note=(note?note+'\n':'')+PREPAID_TAG+c0;}
@@ -1911,7 +1996,7 @@ function editIncome(id){
 }
 
 async function saveIncome(){
-  const payer=getParty('i-payer'),payee=getParty('i-payee'),amount=document.getElementById('i-amount').value;
+  const payer=getParty('i-payer'),payee=getParty('i-payee'),amount=(amtVal('i-amount')||'')+'';
   if(!payer||!payee||!amount){alert(lang==='zh'?'请填写打款人、收款人和金额':'Please fill payer, payee and amount');return;}
   const row={payer,payee,amount:parseFloat(amount),date:document.getElementById('i-date').value,
     status:document.getElementById('i-status').value,payment:document.getElementById('i-pay').value,
@@ -2019,7 +2104,7 @@ async function openXfer(id,mode){
   document.getElementById('modal-xfer').classList.add('open');
 }
 async function saveXfer(){
-  const row={from_acc:document.getElementById('x-from').value,to_acc:document.getElementById('x-to').value,amount:parseFloat(document.getElementById('x-amount').value||0),
+  const row={from_acc:document.getElementById('x-from').value,to_acc:document.getElementById('x-to').value,amount:amtVal('x-amount'),
     date:document.getElementById('x-date').value||today(),note:document.getElementById('x-note').value.trim(),created_by:currentUser.name};
   if(!row.amount){alert(L('请填写金额','Please enter the amount'));return;}
   if(row.from_acc===row.to_acc){alert(L('转出和转入不能是同一个账户','From and To must be different'));return;}
@@ -2284,7 +2369,7 @@ function editPetty(id){
 async function savePetty(){
   const G=getPc('pc-giver'),R=getPc('pc-receiver');
   const giver=G.person,receiver=R.person;
-  const amount=parseFloat(document.getElementById('pc-amount').value||0);
+  const amount=amtVal('pc-amount');
   if(!giver||!receiver||!amount){alert(lang==='zh'?'请填写发放人、收款人和金额':'Please fill all fields');return;}
   if(giver===receiver&&(giver!=='司机'||String(G.driverId)===String(R.driverId))){alert('发放人和收款人不能是同一人 / Giver and receiver cannot be the same');return;}
   if(giver==='司机'&&receiver==='司机'){alert('司机之间转钱请分两笔：先退给发放人，再发给另一位司机 / Driver-to-driver: record as two transfers');return;}
@@ -2484,7 +2569,7 @@ document.addEventListener('visibilitychange',()=>{
 
 // Init
 lang=localStorage.getItem('lang')||'zh';
-applyLang();
+applyLang();setupCalcFields();
 loadPeople().finally(()=>autoLogin());
 </script>
 </body>
