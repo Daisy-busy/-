@@ -409,6 +409,7 @@ input:checked+.slider:before{transform:translateX(18px);}
         <button class="btn btn-p" onclick="exportExcel()">📊 导出 / Export Excel</button>
         <button class="btn btn-s" onclick="exportCSV()">📥 导出 / Export CSV</button>
         <button class="btn btn-s" onclick="copyText()">📋 复制 / Copy Text</button>
+        <button class="btn btn-s admin-only" style="display:none;border-color:#91caff;color:#0958d9;" onclick="copyRecon()">🔍 复制对账数据 / Copy for reconciliation</button>
       </div>
     </div>
     <div class="card"><div style="font-size:12px;color:#888;margin-bottom:10px;" class="t-preview">预览 / Preview</div><pre class="exp-pre" id="exp-pre">-</pre></div>
@@ -2541,6 +2542,40 @@ function exportCSV(){
   a.download=`ledger_${month||'all'}.csv`;a.click();
 }
 
+/* Everything that moved each of Xu Hui's accounts in a month, as plain text to paste to Claude together with bank screenshots */
+function reconText(m){
+  if(!m)m=curMonth();
+  const f=m+'-01',t=nextMonth(m)+'-01',S0=opening.start||'2000-01-01';
+  if(t<=S0)return L(`开账日 ${opening.start} 之前没有账户数据`,`No account data before ${opening.start}`);
+  const from=f<S0?S0:f;const st=buildStatement(m);
+  const lines=[`【对账数据】${m}（${from} ~ ${t}，不含 ${t}）· 导出于 ${new Date().toLocaleString('zh-CN',{hour12:false})}`,
+    '说明：金额 + 是进账，− 是出账；E=支出 I=收入 P=备用金发放/退还 X=存取互转'];
+  ACCOUNTS.forEach(a=>{
+    const r=st.acc.find(x=>x.name===a)||{open:0,close:0};
+    const items=[];
+    expenses.filter(b=>inRange(b,from,t)&&hitsAccount(b)&&normPay(b.payment)===a)
+      .forEach(b=>items.push([b.date,-toAED(b),'E',`${b.merchant||''}｜${nm(b.person||'')}｜${b.category||''}${b.source==='fleet'?'｜用车系统':''}`]));
+    incomes.filter(b=>inRange(b,from,t)&&incomeAccount(b)===a)
+      .forEach(b=>items.push([b.date,+parseFloat(b.amount||0),'I',`${b.payer||''}→${b.payee||''}｜${b.payment||''}${b.note?'｜'+b.note:''}`]));
+    pettyCash.filter(b=>inRange(b,from,t)&&(b.account||'现金')===a&&(b.giver==='徐慧')!==(b.receiver==='徐慧'))
+      .forEach(b=>items.push([b.date,b.giver==='徐慧'?-parseFloat(b.amount||0):+parseFloat(b.amount||0),'P',`${b.giver==='司机'?driverLabel(b):nm(b.giver)}→${b.receiver==='司机'?driverLabel(b):nm(b.receiver)}${b.note?'｜'+b.note:''}`]));
+    transfers.filter(x=>inRange(x,from,t)&&(x.from_acc===a||x.to_acc===a))
+      .forEach(x=>items.push([x.date,x.to_acc===a?+parseFloat(x.amount||0):-parseFloat(x.amount||0),'X',`${x.from_acc}→${x.to_acc}${x.note?'｜'+x.note:''}`]));
+    if(!items.length&&Math.abs(r.open)<0.005&&Math.abs(r.close)<0.005)return;
+    items.sort((x,y)=>x[0].localeCompare(y[0])||x[1]-y[1]);
+    lines.push('',`== ${a} ==  月初 ${fmtAED(r.open)}  →  月末 ${fmtAED(r.close)}（共 ${items.length} 笔）`);
+    items.forEach(([d,v,k,desc])=>lines.push(`${d.slice(5)}  ${(v>=0?'+':'−')+fmtAED(Math.abs(v))}  ${k}  ${desc}`));
+  });
+  const pend=expenses.filter(b=>inRange(b,from,t)&&pendingReimb(b));
+  if(pend.length){lines.push('','== 待报销（别人垫付，还没从任何账户扣）==');pend.forEach(b=>lines.push(`${b.date.slice(5)}  ${fmtAED(toAED(b))}  ${b.merchant||''}｜${nm(b.person||'')}`));}
+  return lines.join('\n');
+}
+async function copyRecon(){
+  const m=document.getElementById('exp-month').value||document.getElementById('global-month')?.value||curMonth();
+  const txt=reconText(m);
+  try{await navigator.clipboard.writeText(txt);alert(L('✅ 已复制对账数据。打开 Claude 粘贴，再发银行截图即可。','✅ Copied. Paste it to Claude together with your bank screenshots.'));}
+  catch(e){document.getElementById('exp-pre').textContent=txt;alert(L('浏览器不允许自动复制，已显示在下面的预览框里，请长按全选复制。','Copy blocked — the text is shown in the preview below; select and copy it.'));}
+}
 function copyText(){navigator.clipboard.writeText(document.getElementById('exp-pre').textContent).then(()=>alert(lang==='zh'?'✅ 已复制':'✅ Copied'));}
 
 // ── Version check: reload when a newer version has been deployed ──
