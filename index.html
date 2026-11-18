@@ -769,7 +769,14 @@ const COLORS=[['#ede9fe','#4c1d95'],['#d1fae5','#064e3b'],['#dbeafe','#1e3a8a'],
 const CNY_RATE=2;
 let expenses=[],incomes=[],pettyCash=[],users=[];
 let currentUser=null,editExpenseId=null,editIncomeId=null,pwdUserId=null;
-let apiKey='',currentPhotosE=[],currentPhotosI=[];
+let apiKey='',currentPhotosE=[],currentPhotosI=[],pendingUploads=[];
+const okPhoto=u=>typeof u==='string'&&/^https?:/.test(u);
+async function finishUploads(arr){
+  if(pendingUploads.length){await Promise.allSettled(pendingUploads);}
+  const bad=arr.filter(u=>!okPhoto(u)).length;
+  if(bad)alert(lang==='zh'?`有 ${bad} 张照片上传失败，没有保存，请重新上传`:`${bad} photo(s) failed to upload and were not saved. Please upload again.`);
+  return arr.filter(okPhoto);
+}
 let lang=(()=>{try{return localStorage.getItem('lang')==='en'?'en':'zh'}catch(e){return 'zh'}})();
 function L(zh,en){return lang==='en'?en:zh;}
 function nm(n){const v=PETTY_NAMES[n];return lang==='en'&&v?v.split(' / ')[1]:n;}
@@ -1300,7 +1307,7 @@ function billHTML(b,type){
     :isPetty
     ?`<span>${b.date||''}</span><span class="tag tag-备用金">${t('tab-petty')}</span>${b.created_by&&b.created_by===b.receiver&&b.created_by!==b.giver?`<span style="font-size:11px;color:#389e0d;">收款人登记 / Recorded by receiver</span>`:''}`
     :`<span class="sdot sdot-${b.status}"></span><span>${b.person==='司机'&&b.driver_name?driverLabel(b):nm(b.person||'')}</span><span>${b.date||''}</span><span class="tag tag-${b.category}">${catLabel(b.category)}</span>${isCNY?'<span style="font-size:10px;background:#fff0e6;color:#7a3a0a;padding:1px 5px;border-radius:99px;">CNY</span>':''}<span style="font-size:11px;background:#f0f0f0;padding:1px 6px;border-radius:99px;color:#555;">${payLabel(b.payment||'')}</span>${isAdvance(b)?`<span style="font-size:11px;background:${b.advance_deducted_by?'#f5f5f5':'#fff7e6'};color:${b.advance_deducted_by?'#8c8c8c':'#ad4e00'};border:1px solid ${b.advance_deducted_by?'#d9d9d9':'#ffd591'};padding:0 6px;border-radius:99px;">${b.advance_deducted_by?L('预支·已扣','advance · deducted'):L('预支·待扣','advance · pending')}</span>`:''}${pendingReimb(b)?`<span style="font-size:11px;background:#fff1f0;color:#cf1322;border:1px solid #ffa39e;padding:0 6px;border-radius:99px;">${L('待报销','To reimburse')}</span>`:''}${b.petty_from&&b.petty_from!==b.person?`<span style="font-size:11px;background:#fffbe6;color:#ad6800;border:1px solid #ffe58f;padding:0 6px;border-radius:99px;">${L('扣','from')} ${nm(b.petty_from)} ${L('备用金','petty')}</span>`:''}`;
-  const photos=(b.photos&&b.photos.length)?`<div class="bill-photos">${b.photos.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')" loading="lazy">`).join('')}</div>`:'';
+  const _ph=(b.photos||[]).filter(okPhoto);const photos=_ph.length?`<div class="bill-photos">${_ph.map(s=>`<img class="bill-photo-thumb" src="${s}" onclick="openLightbox('${s}')" loading="lazy">`).join('')}</div>`:'';
   const edf=isInc?`editIncome('${b.id}')`:isPetty?`editPetty('${b.id}')`:(`editExpense('${b.id}')`);
   const dlf=isInc?`delIncome('${b.id}')`:isPetty?`delPetty('${b.id}')`:(`delExpense('${b.id}')`);
   // Records synced from the fleet system are read-only here (edit them in the fleet system)
@@ -1628,13 +1635,14 @@ function handleFile(inp,mode){
     else renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
 
     // Upload to storage in background
-    uploadToStorage(file).then(url=>{
-      photos[placeholderIdx]=url; // replace blob with real URL
+    const job=uploadToStorage(file).then(url=>{
+      const k=photos.indexOf(blobUrl);if(k>=0)photos[k]=url; // replace blob with real URL
       if(mode==='expense')renderPhotoGrid(currentPhotosE,'photo-grid-e','photo-count-e','file-inp-e','expense');
       else renderPhotoGrid(currentPhotosI,'photo-grid-i','photo-count-i','file-inp-i','income');
     }).catch(err=>{
       console.error('Upload failed:',err);
-    });
+    }).finally(()=>{pendingUploads=pendingUploads.filter(x=>x!==job);});
+    pendingUploads.push(job);
 
     // AI recognition on first file
     if(!firstDone&&idx===0&&apiKey.startsWith('sk-ant-')){
@@ -1871,7 +1879,7 @@ async function openAdd(){
 function editExpense(id){
   const b=expenses.find(x=>x.id===id);if(!b)return;
   if(isAdvance(b)){editAdvance(b);return;}   // advances have their own small form
-  editExpenseId=id;currentPhotosE=b.photos?[...b.photos]:[];
+  editExpenseId=id;currentPhotosE=(b.photos||[]).filter(okPhoto);
   document.getElementById('expense-title').textContent=lang==='zh'?'编辑支出':'Edit Expense';
   document.getElementById('expense-save-btn').querySelector('span').textContent=lang==='zh'?'保存修改':'Save';
   document.getElementById('e-merchant').value=b.merchant||'';document.getElementById('e-amount').value=b.amount||'';
@@ -1932,7 +1940,7 @@ async function saveExpense(){
   const row={merchant,amount:parseFloat(amount),currency:document.getElementById('e-currency').value,person,
     category:cat,date:document.getElementById('e-date').value,
     status:document.getElementById('e-status').value,payment:document.getElementById('e-pay').value,
-    note,photos:currentPhotosE,created_by:currentUser.name};
+    note,photos:await finishUploads(currentPhotosE),created_by:currentUser.name};
   if(person==='司机'&&myDriverId()!=null){row.driver_id=myDriverId();row.driver_name=driverNameById(myDriverId())||null;}
   if(document.getElementById('e-pf-box').style.display!=='none'&&isPettyPay(row.payment)){const pf=document.getElementById('e-pf').value;row.petty_from=pf&&pf!==person?pf:null;}
   else if(isPettyPay(row.payment)===false)row.petty_from=null;
@@ -1984,7 +1992,7 @@ async function openIncome(){
 
 function editIncome(id){
   const b=incomes.find(x=>x.id===id);if(!b)return;
-  editIncomeId=id;currentPhotosI=b.photos?[...b.photos]:[];
+  editIncomeId=id;currentPhotosI=(b.photos||[]).filter(okPhoto);
   document.getElementById('income-title').textContent=lang==='zh'?'编辑收入':'Edit Income';
   document.getElementById('income-save-btn').querySelector('span').textContent=lang==='zh'?'保存修改':'Save';
   setParty('i-payer',b.payer||'');setParty('i-payee',b.payee||'');
@@ -2002,7 +2010,7 @@ async function saveIncome(){
   const row={payer,payee,amount:parseFloat(amount),date:document.getElementById('i-date').value,
     status:document.getElementById('i-status').value,payment:document.getElementById('i-pay').value,
     account:(()=>{const v=document.getElementById('i-pay').value;return ACCOUNTS.includes(v)?v:v==='转U'?'现金':document.getElementById('i-account').value;})(),
-    note:document.getElementById('i-note').value.trim(),photos:currentPhotosI,created_by:currentUser.name};
+    note:document.getElementById('i-note').value.trim(),photos:await finishUploads(currentPhotosI),created_by:currentUser.name};
   if(editIncomeId){
     const{error}=await sb.from('incomes').update(row).eq('id',editIncomeId);
     if(error){alert('保存失败：'+error.message);return;}
